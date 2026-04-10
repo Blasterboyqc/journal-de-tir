@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="description" content="Journal de tir électronique pour le Prolongement Ligne Bleue — PLB">
+<title>Journal de Tir — PLB</title>
+<link rel="stylesheet" href="./css/style.css">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+</head>
+<body>
+
+<!-- ONBOARDING -->
+<div id="onboarding">
+  <div class="ob-logo">💥</div>
+  <h1>Journal de Tir PLB</h1>
+  <p>Configurez votre profil pour commencer. Ces informations seront pré-remplies dans chaque tir.</p>
+  <div class="ob-section">
+    <h2>👤 Votre profil</h2>
+    <div class="form-row">
+      <div class="form-group"><label>Prénom <span class="req">*</span></label><input type="text" id="ob-first" placeholder="Raphaël" autocomplete="given-name"></div>
+      <div class="form-group"><label>Nom <span class="req">*</span></label><input type="text" id="ob-last" placeholder="Nom de famille" autocomplete="family-name"></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="form-row">
+      <div class="form-group"><label>No permis SQ <span class="req">*</span></label><input type="text" id="ob-sq" placeholder="SQ-XXXXX"></div>
+      <div class="form-group"><label>No certificat CCQ</label><input type="text" id="ob-ccq" placeholder="CCQ-XXXXX"></div>
+    </div>
+  </div>
+  <div class="ob-section">
+    <h2>🏗️ Chantier</h2>
+    <div class="form-group" style="margin-bottom:10px"><label>Employeur</label><input type="text" id="ob-employer" placeholder="Nom de l'entrepreneur"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Projet</label><input type="text" id="ob-project" placeholder="PLB — Prolongement Ligne Bleue" value="PLB — Prolongement Ligne Bleue"></div>
+      <div class="form-group"><label>Maître d'œuvre</label><input type="text" id="ob-owner" placeholder="STM / Pomerleau" value="STM"></div>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-full" onclick="window.app.completeOnboarding()" style="margin-top:8px">Commencer →</button>
+  <p style="font-size:11px;color:var(--text3);text-align:center;margin-top:12px">Modifiable à tout moment dans Réglages</p>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <!-- Header -->
+  <div id="header">
+    <div class="logo">JT</div>
+    <div style="flex:1">
+      <div class="title">Journal de Tir</div>
+      <span class="subtitle" id="header-project">PLB</span>
+    </div>
+    <div id="header-btns">
+      <button class="btn-icon" onclick="window.app.openPDFImport()" title="Importer un plan">📄</button>
+      <button class="btn-icon" onclick="window.app.newJournal()" title="Nouveau tir">✚</button>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div id="tab-bar">
+    <button class="tab-btn active" id="tab-btn-dashboard" onclick="window.app.switchTab('dashboard')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Accueil
+    </button>
+    <button class="tab-btn" id="tab-btn-encours" onclick="window.app.switchTab('encours')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      En cours <span class="badge" id="badge-encours" style="display:none">0</span>
+    </button>
+    <button class="tab-btn" id="tab-btn-journal" onclick="window.app.switchTab('journal')">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Journal
+    </button>
+    <button class="tab-btn" id="tab-btn-schema" onclick="window.app.switchTab('schema')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+      Schéma
+    </button>
+    <button class="tab-btn" id="tab-btn-history" onclick="window.app.switchTab('history')">
+      <svg viewBox="0 0 24 24"><path d="M12 20h9"/><polyline points="16.5 3.5 21 8 16.5 12.5"/><path d="M21 8H7.5a4.5 4.5 0 0 0 0 9H12"/></svg>
+      Historique
+    </button>
+    <button class="tab-btn" id="tab-btn-settings" onclick="window.app.switchTab('settings')">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Réglages
+    </button>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- ===== DASHBOARD TAB ===== -->
+    <div class="tab-pane active" id="pane-dashboard">
+      <div class="dash-header">
+        <h2 id="dash-greeting">Bonjour 👷</h2>
+        <p id="dash-date-str"></p>
+      </div>
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="val" id="stat-total">0</div><div class="lbl">Tirs complétés</div></div>
+        <div class="stat-card"><div class="val" id="stat-drafts">0</div><div class="lbl">En cours</div><div class="sub" style="color:var(--yellow)">Brouillons</div></div>
+        <div class="stat-card"><div class="val" id="stat-thisweek">0</div><div class="lbl">Cette semaine</div></div>
+        <div class="stat-card"><div class="val" id="stat-thismonth">0</div><div class="lbl">Ce mois</div></div>
+      </div>
+      <div class="quick-btns">
+        <button class="quick-btn" onclick="window.app.newJournal()">
+          <div class="qb-icon">✚</div>
+          <div class="qb-title">Nouveau tir</div>
+          <div class="qb-sub">Créer un journal</div>
+        </button>
+        <button class="quick-btn" onclick="window.app.openPDFImport()">
+          <div class="qb-icon">📄</div>
+          <div class="qb-title">Importer plan</div>
+          <div class="qb-sub">Fichier PDF</div>
+        </button>
+        <button class="quick-btn" onclick="window.app.switchTab('encours')">
+          <div class="qb-icon">⏳</div>
+          <div class="qb-title">Reprendre</div>
+          <div class="qb-sub">Brouillons en cours</div>
+        </button>
+        <button class="quick-btn" onclick="window.app.switchTab('history')">
+          <div class="qb-icon">📚</div>
+          <div class="qb-title">Historique</div>
+          <div class="qb-sub">Tirs complétés</div>
+        </button>
+        <button class="quick-btn" onclick="window.app.exportAllData()">
+          <div class="qb-icon">💾</div>
+          <div class="qb-title">Exporter</div>
+          <div class="qb-sub">Sauvegarde JSON</div>
+        </button>
+        <button class="quick-btn" onclick="window.app.printJournal()">
+          <div class="qb-icon">🖨️</div>
+          <div class="qb-title">Imprimer</div>
+          <div class="qb-sub">Journal actuel</div>
+        </button>
+      </div>
+      <div id="dash-recent" style="padding:0 12px 0"></div>
+    </div>
+
+    <!-- ===== EN COURS TAB ===== -->
+    <div class="tab-pane" id="pane-encours">
+      <div style="padding:14px 12px 6px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:17px;font-weight:700">⏳ En cours</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">Journaux non finalisés — reprendre ou finaliser</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="window.app.newJournal()">+ Nouveau</button>
+      </div>
+      <div id="drafts-list"></div>
+      <div id="drafts-empty" class="empty-state" style="display:none">
+        <div class="es-icon">📝</div>
+        <h3>Aucun brouillon</h3>
+        <p>Commencez un nouveau tir pour le voir apparaître ici</p>
+      </div>
+    </div>
+
+    <!-- ===== JOURNAL TAB ===== -->
+    <div class="tab-pane" id="pane-journal">
+
+      <!-- Top bar -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 4px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700" id="j-entry-id-display">Nouveau tir</div>
+          <div style="font-size:11px;color:var(--text3)" id="j-status-display">Brouillon · non finalisé</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="window.app.saveDraft()">💾 Sauver</button>
+        <button class="btn btn-primary btn-sm" onclick="window.app.finalizeJournal()">✓ Finaliser</button>
+      </div>
+
+      <!-- PDF import hint -->
+      <div id="pdf-hint" style="margin:6px 12px 0">
+        <div class="alert alert-info" style="cursor:pointer;display:flex;align-items:center;gap:8px" onclick="window.app.openPDFImport()">
+          <span>📄</span>
+          <span style="flex:1;font-size:13px">Importer depuis un plan de sautage PDF</span>
+          <span style="font-size:12px">→</span>
+        </div>
+      </div>
+
+      <!-- SECTION A: Identification -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-A','ch-A')">
+          <div class="section-letter">A</div>
+          <h3>Identification</h3>
+          <span class="card-hint" id="ch-A-hint"></span>
+          <svg class="chevron open" id="ch-A" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-A">
+          <div class="form-row">
+            <div class="form-group"><label>No de tir <span class="req">*</span></label><input type="text" id="j-shot-id" placeholder="Tir DL-06 ou Tir 18 B-10" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Date <span class="req">*</span></label><input type="date" id="j-date" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Heure prévue</label><input type="time" id="j-time-planned" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Quart</label>
+              <select id="j-shift" onchange="window.appAutoSave()">
+                <option value="">—</option>
+                <option value="jour">Jour (6h–14h)</option>
+                <option value="soir">Soir (14h–22h)</option>
+                <option value="nuit">Nuit (22h–6h)</option>
+              </select>
+            </div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row cols1">
+            <div class="form-group"><label>Station / Zone <span class="req">*</span></label>
+              <select id="j-station" onchange="window.appAutoSave()">
+                <option value="">— Sélectionner —</option>
+                <option value="Lacordaire">Lacordaire</option>
+                <option value="Langelier">Langelier</option>
+                <option value="Provencher">Provencher</option>
+                <option value="Pie-IX">Pie-IX / Vertières</option>
+                <option value="Des Halles">Des Halles</option>
+                <option value="autre">Autre…</option>
+              </select>
+            </div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Zone type</label>
+              <select id="j-zone-type" onchange="window.appAutoSave()">
+                <option value="">—</option>
+                <option value="TUNNEL">Tunnel</option>
+                <option value="BANQUETTE">Banquette</option>
+                <option value="PUITS">Puits</option>
+                <option value="GALERIE">Galerie</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Chaînage / Heading</label><input type="text" id="j-chainage" placeholder="Ex: Ch.1+450" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>No plan DWG</label><input type="text" id="j-dwg" placeholder="8721003-…-DWG-XXXX" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Révision</label><input type="text" id="j-rev" placeholder="R00" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Entrepreneur</label><input type="text" id="j-contractor" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Maître d'œuvre</label><input type="text" id="j-owner" oninput="window.appAutoSave()"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION B: Personnel -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-B','ch-B')">
+          <div class="section-letter">B</div>
+          <h3>Personnel</h3>
+          <svg class="chevron open" id="ch-B" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-B">
+          <p class="section-hint">Boutefeu</p>
+          <div class="form-row">
+            <div class="form-group"><label>Nom complet <span class="req">*</span></label><input type="text" id="j-blaster-name" oninput="window.appAutoSave()" autocomplete="name"></div>
+            <div class="form-group"><label>No permis SQ <span class="req">*</span></label><input type="text" id="j-blaster-sq" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>No CCQ</label><input type="text" id="j-blaster-ccq" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Coordonnateur tir</label><input type="text" id="j-coordinator" oninput="window.appAutoSave()"></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Superviseur &amp; équipe</p>
+          <div class="form-row">
+            <div class="form-group"><label>Superviseur SST</label><input type="text" id="j-supervisor" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Conçu par (plan)</label><input type="text" id="j-concu-par" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Dessiné par (plan)</label><input type="text" id="j-dessine-par" oninput="window.appAutoSave()"></div>
+          <div class="divider"></div>
+          <p class="section-hint">Assistants</p>
+          <div id="assistants-list"></div>
+          <div class="add-row">
+            <input type="text" id="assistant-input" placeholder="Nom de l'assistant…" onkeydown="if(event.key==='Enter')window.app.addAssistant()">
+            <button class="btn btn-secondary btn-sm" onclick="window.app.addAssistant()">+ Ajouter</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION C: Forage -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-C','ch-C')">
+          <div class="section-letter">C</div>
+          <h3>Forage</h3>
+          <svg class="chevron open" id="ch-C" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-C">
+          <div class="form-row">
+            <div class="form-group"><label>Type de roc</label>
+              <select id="j-rock" onchange="window.appAutoSave()">
+                <option value="">—</option>
+                <option value="granite">Granite</option>
+                <option value="calcaire">Calcaire</option>
+                <option value="gneiss">Gneiss</option>
+                <option value="schiste">Schiste</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Diamètre forage (mm)</label><input type="number" id="j-diam-mm" placeholder="51" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Prof. forée (m)</label><input type="number" id="j-prof-foree" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Avance / volée (m)</label><input type="number" id="j-avance" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Sous-forage (m)</label><input type="number" id="j-sous-forage" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Espacement (m)</label><input type="number" id="j-espacement" step="0.01" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Fardeau (m)</label><input type="number" id="j-fardeau" step="0.01" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Collet (m)</label><input type="number" id="j-collet" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Nombre de trous</p>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Masse</label><input type="number" id="j-trous-masse" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+            <div class="form-group"><label>Bouchon</label><input type="number" id="j-trous-bouchon" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+            <div class="form-group"><label>Satellite</label><input type="number" id="j-trous-satellite" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Périmétriques</label><input type="number" id="j-trous-perim" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+            <div class="form-group"><label>Lifters</label><input type="number" id="j-trous-lifter" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+            <div class="form-group"><label>Alésage</label><input type="number" id="j-trous-alesage" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Tampon</label><input type="number" id="j-trous-tampon" oninput="window.app.updateTotalHoles();window.appAutoSave()"></div>
+            <div class="form-group"><label>Total trous</label><input type="number" id="j-trous-total" readonly style="background:var(--surface);font-weight:700;color:var(--accent2)"></div>
+            <div class="form-group"><label>Superficie (m²)</label><input type="number" id="j-superficie" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Volume (m³)</label><input type="number" id="j-volume" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Hauteur du banc (m)</label><input type="number" id="j-hauteur-banc" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION D: Explosifs -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-D','ch-D')">
+          <div class="section-letter">D</div>
+          <h3>Explosifs et détonateurs</h3>
+          <svg class="chevron open" id="ch-D" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-D">
+          <p class="section-hint">Système d'initiation</p>
+          <div class="radio-group" id="firing-sys-group">
+            <label class="radio-opt" onclick="window.app.selectRadio('j-firing-sys','edev2',this)"><input type="radio" name="firing-sys" value="edev2">eDev II</label>
+            <label class="radio-opt" onclick="window.app.selectRadio('j-firing-sys','unitronic',this)"><input type="radio" name="firing-sys" value="unitronic">UNITRONIC</label>
+            <label class="radio-opt" onclick="window.app.selectRadio('j-firing-sys','nonel',this)"><input type="radio" name="firing-sys" value="nonel">NONEL</label>
+            <label class="radio-opt" onclick="window.app.selectRadio('j-firing-sys','electrique',this)"><input type="radio" name="firing-sys" value="electrique">Électrique</label>
+          </div>
+          <input type="hidden" id="j-firing-sys">
+          <div style="height:10px"></div>
+          <div class="form-row cols3">
+            <div class="form-group"><label>Nb détonateurs <span class="req">*</span></label><input type="number" id="j-nb-det" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>No lot détonateurs</label><input type="text" id="j-lot-det" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>ID Blast Box</label><input type="text" id="j-blast-box" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Délai min (ms)</label><input type="number" id="j-delay-min" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Délai max (ms)</label><input type="number" id="j-delay-max" oninput="window.appAutoSave()"></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Explosifs utilisés</p>
+          <div style="overflow-x:auto">
+            <table class="exp-table" id="exp-table">
+              <thead><tr><th>Produit</th><th>No lot</th><th>Qté reçue</th><th>Qté utilisée</th><th>Qté retournée</th><th>Unité</th><th class="del-cell"></th></tr></thead>
+              <tbody id="exp-tbody"></tbody>
+            </table>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="window.app.addExplosifRow()">+ Ajouter explosif</button>
+          <div class="divider"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Charge totale (kg) <span class="req">*</span></label><input type="number" id="j-charge-totale" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Facteur chargement (kg/m³)</label><input type="number" id="j-facteur-charg" step="0.01" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Matelas de protection</label>
+            <div class="radio-group">
+              <label class="radio-opt" onclick="window.app.selectRadio('j-matelas','oui',this)"><input type="radio" name="matelas" value="oui">OUI — min. 3 épaisseurs</label>
+              <label class="radio-opt" onclick="window.app.selectRadio('j-matelas','non',this)"><input type="radio" name="matelas" value="non">Non requis</label>
+            </div>
+          </div>
+          <input type="hidden" id="j-matelas">
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Test de continuité eDev</label>
+            <div class="radio-group">
+              <label class="radio-opt" onclick="window.app.selectRadio('j-continuity','pass',this)"><input type="radio" name="continuity" value="pass">✅ PASS</label>
+              <label class="radio-opt" onclick="window.app.selectRadio('j-continuity','fail',this)"><input type="radio" name="continuity" value="fail">❌ FAIL</label>
+            </div>
+          </div>
+          <input type="hidden" id="j-continuity">
+        </div>
+      </div>
+
+      <!-- SECTION E: Chronologie -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-E','ch-E')">
+          <div class="section-letter">E</div>
+          <h3>Chronologie</h3>
+          <svg class="chevron open" id="ch-E" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-E">
+          <div class="form-row">
+            <div class="form-group"><label>Heure d'amorçage prévue</label><input type="time" id="j-time-planned-fire" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Heure d'amorçage réelle <span class="req">*</span></label><input type="time" id="j-time-fire" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Fin de tir confirmée</label><input type="time" id="j-time-end" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Réouverture des accès</label><input type="time" id="j-time-reopen" oninput="window.appAutoSave()"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION F: Pré-tir Checklist -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-F','ch-F')">
+          <div class="section-letter">F</div>
+          <h3>Pré-tir — liste de vérification</h3>
+          <span class="card-hint" id="ch-F-hint"></span>
+          <svg class="chevron open" id="ch-F" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-F">
+          <div class="checklist" id="pretir-checklist">
+            <div class="check-item" id="chk-evac" onclick="window.app.toggleCheck('chk-evac')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Zone dégagée — tout le personnel évacué</span>
+            </div>
+            <div class="check-item" id="chk-barr" onclick="window.app.toggleCheck('chk-barr')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Barrières et gardes en place</span>
+            </div>
+            <div class="check-item" id="chk-sig" onclick="window.app.toggleCheck('chk-sig')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Signaux d'avertissement activés</span>
+            </div>
+            <div class="check-item" id="chk-radio" onclick="window.app.toggleCheck('chk-radio')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Communication radio confirmée</span>
+            </div>
+            <div class="check-item" id="chk-vent" onclick="window.app.toggleCheck('chk-vent')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Ventilation vérifiée</span>
+            </div>
+            <div class="check-item" id="chk-cont" onclick="window.app.toggleCheck('chk-cont')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Test de continuité eDev PASS</span>
+            </div>
+            <div class="check-item" id="chk-prog" onclick="window.app.toggleCheck('chk-prog')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Fichier programme vérifié par boutefeu</span>
+            </div>
+            <div class="check-item" id="chk-auth" onclick="window.app.toggleCheck('chk-auth')">
+              <div class="check-box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <span class="check-label">Autorisation du maître d'œuvre obtenue</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION G: Conditions -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-G','ch-G')">
+          <div class="section-letter">G</div>
+          <h3>Conditions souterraines</h3>
+          <svg class="chevron open" id="ch-G" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-G">
+          <div class="form-row cols3">
+            <div class="form-group"><label>Température (°C)</label><input type="number" id="j-temp" step="0.5" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Humidité (%)</label><input type="number" id="j-humidity" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Ventilation (m³/s)</label><input type="number" id="j-vent-flow" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Présence d'eau</label>
+            <div class="radio-group">
+              <label class="radio-opt" onclick="window.app.selectRadio('j-eau','aucune',this)">Aucune</label>
+              <label class="radio-opt" onclick="window.app.selectRadio('j-eau','humide',this)">Humide</label>
+              <label class="radio-opt" onclick="window.app.selectRadio('j-eau','ecoulement',this)">Écoulement</label>
+              <label class="radio-opt" onclick="window.app.selectRadio('j-eau','inondation',this)">Inondation</label>
+            </div>
+          </div>
+          <input type="hidden" id="j-eau">
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Observations conditions</label><textarea id="j-cond-obs" placeholder="Notes sur l'état du terrain…" oninput="window.appAutoSave()"></textarea></div>
+        </div>
+      </div>
+
+      <!-- SECTION H: Vibrations -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-H','ch-H')">
+          <div class="section-letter">H</div>
+          <h3>Vibrations et surpression</h3>
+          <svg class="chevron open" id="ch-H" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-H">
+          <div class="form-row">
+            <div class="form-group"><label>PPV max mesuré (mm/s) <span class="req">*</span></label><input type="number" id="j-ppv-max" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Limite PPV contractuelle</label><input type="number" id="j-ppv-limit" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Fréquence dominante (Hz)</label><input type="number" id="j-freq" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Surpression (dB)</label><input type="number" id="j-airblast" step="0.1" oninput="window.appAutoSave()"></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Capteurs sismographes</p>
+          <div id="seismo-list"></div>
+          <div class="add-row">
+            <input type="text" id="seismo-loc-input" placeholder="Emplacement (ex: Pharmaprix)" style="flex:1.5">
+            <input type="number" id="seismo-ppv-input" placeholder="PPV mm/s" step="0.1">
+            <button class="btn btn-secondary btn-sm" onclick="window.app.addSeismo()">+ Ajouter</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION I: Post-tir -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-I','ch-I')">
+          <div class="section-letter">I</div>
+          <h3>Post-tir</h3>
+          <svg class="chevron open" id="ch-I" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-I">
+          <p class="section-hint">Résultat du tir</p>
+          <div class="radio-group" id="result-group">
+            <label class="radio-opt" onclick="window.app.selectRadio('j-result','succes',this)">✅ Succès</label>
+            <label class="radio-opt" onclick="window.app.selectRadio('j-result','partiel',this)">⚠️ Partiel</label>
+            <label class="radio-opt" onclick="window.app.selectRadio('j-result','rates',this)">❌ Ratés</label>
+          </div>
+          <input type="hidden" id="j-result">
+          <div id="misfire-section" style="display:none">
+            <div class="divider"></div>
+            <div class="alert alert-danger">⚠️ Procédure ratés — CSTC 3.15.14</div>
+            <div class="form-row">
+              <div class="form-group"><label>Nb trous ratés</label><input type="number" id="j-misfire-count" oninput="window.appAutoSave()"></div>
+              <div class="form-group"><label>Nos trous</label><input type="text" id="j-misfire-holes" placeholder="Ex: 12, 15" oninput="window.appAutoSave()"></div>
+            </div>
+            <div class="form-group" style="margin-top:8px"><label>Mesures prises</label><textarea id="j-misfire-actions" placeholder="Procédure selon CSTC 3.15.14…" oninput="window.appAutoSave()"></textarea></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Gaz post-tir (CSTC)</p>
+          <div class="form-row cols3">
+            <div class="form-group"><label>CO (ppm) ≤25</label><input type="number" id="j-co" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>NO₂ (ppm) ≤1</label><input type="number" id="j-no2" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Ventilation (min)</label><input type="number" id="j-vent-time" oninput="window.appAutoSave()"></div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Résultats</p>
+          <div class="form-row">
+            <div class="form-group"><label>Avancement réel (m)</label><input type="number" id="j-advance-real" step="0.1" oninput="window.appAutoSave()"></div>
+            <div class="form-group"><label>Fragmentation</label>
+              <select id="j-frag" onchange="window.appAutoSave()">
+                <option value="">—</option>
+                <option value="bon">Bonne</option>
+                <option value="moyen">Moyenne</option>
+                <option value="mauvais">Mauvaise</option>
+              </select>
+            </div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="form-row">
+            <div class="form-group"><label>Scalage complété</label>
+              <div class="radio-group">
+                <label class="radio-opt" onclick="window.app.selectRadio('j-scalage','oui',this)">Oui</label>
+                <label class="radio-opt" onclick="window.app.selectRadio('j-scalage','non',this)">Non</label>
+              </div>
+            </div>
+            <div class="form-group"><label>Soutènement requis</label>
+              <div class="radio-group">
+                <label class="radio-opt" onclick="window.app.selectRadio('j-soutenement','oui',this)">Oui</label>
+                <label class="radio-opt" onclick="window.app.selectRadio('j-soutenement','non',this)">Non</label>
+              </div>
+            </div>
+          </div>
+          <input type="hidden" id="j-scalage">
+          <input type="hidden" id="j-soutenement">
+          <div style="height:8px"></div>
+          <div class="form-group"><label>Observations post-tir</label><textarea id="j-post-obs" oninput="window.appAutoSave()"></textarea></div>
+        </div>
+      </div>
+
+      <!-- SECTION J: Signatures -->
+      <div class="card">
+        <div class="card-header" onclick="window.app.toggleCard('sec-J','ch-J')">
+          <div class="section-letter">J</div>
+          <h3>Signatures et certification</h3>
+          <svg class="chevron open" id="ch-J" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        </div>
+        <div class="card-body" id="sec-J">
+          <div class="alert alert-info" style="margin-bottom:12px">Je soussigné(e), boutefeu certifié, atteste que les informations contenues dans ce journal sont véridiques et complètes, conformément au règlement E-22, r.1, au CSTC (S-2.1, r.4) et à la LCCJTI (C-1.1).</div>
+          <p class="section-hint">Signature du boutefeu</p>
+          <div class="form-group" style="margin-bottom:10px"><label>Nom imprimé</label><input type="text" id="j-sig-blaster-name" oninput="window.appAutoSave()"></div>
+          <div class="sig-wrap">
+            <canvas id="sig-blaster" class="sig-canvas"></canvas>
+            <div class="sig-btns">
+              <button class="btn btn-secondary btn-sm" onclick="window.app.clearSig('sig-blaster')">Effacer</button>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint">Signature du surintendant</p>
+          <div class="form-group" style="margin-bottom:10px"><label>Nom imprimé</label><input type="text" id="j-sig-super-name" oninput="window.appAutoSave()"></div>
+          <div class="sig-wrap">
+            <canvas id="sig-super" class="sig-canvas"></canvas>
+            <div class="sig-btns">
+              <button class="btn btn-secondary btn-sm" onclick="window.app.clearSig('sig-super')">Effacer</button>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <p class="section-hint" style="margin-bottom:8px">Piste d'audit LCCJTI</p>
+          <div class="audit-block" id="audit-trail">
+            <div class="audit-row"><span>Document ID</span><span id="aud-id">—</span></div>
+            <div class="audit-row"><span>Session ID</span><span id="aud-session">—</span></div>
+            <div class="audit-row"><span>Créé le</span><span id="aud-created">—</span></div>
+            <div class="audit-row"><span>Modifié le</span><span id="aud-modified">—</span></div>
+            <div class="audit-row"><span>Appareil</span><span id="aud-device">—</span></div>
+            <div class="audit-row"><span>Intégrité (SHA-256)</span><span id="aud-checksum">—</span></div>
+          </div>
+          <div style="height:12px"></div>
+          <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" onclick="window.app.printJournal()">🖨️ Imprimer / PDF</button>
+            <button class="btn btn-secondary btn-sm" onclick="window.app.exportCurrentJSON()">📥 Export JSON</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:20px"></div>
+    </div><!-- end pane-journal -->
+
+    <!-- ===== SCHEMA TAB ===== -->
+    <div class="tab-pane" id="pane-schema">
+      <div style="padding:14px 12px 6px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:17px;font-weight:700">📐 Schéma de tir</div>
+          <div style="font-size:12px;color:var(--text3)" id="schema-source-label">Aucune donnée importée</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="window.app.runGenerateSchematic()">🔄 Générer</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.app.exportSVG()">📥 SVG</button>
+        </div>
+      </div>
+      <div id="schema-empty" class="empty-state">
+        <div class="es-icon">📐</div>
+        <h3>Aucun schéma généré</h3>
+        <p>Importez un plan PDF ou saisissez les données de forage, puis cliquez sur "Générer"</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="window.app.openPDFImport()">📄 Importer un plan</button>
+      </div>
+      <div id="schema-content" style="display:none;padding:0 12px">
+        <div id="schematic-container">
+          <svg id="schematic-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="schematic-legend" id="schema-legend"></div>
+        <div class="card" style="margin:10px 0 0">
+          <div class="card-header" onclick="window.app.toggleCard('sec-schema-params','ch-schema-params')">
+            <div class="section-letter" style="background:var(--text3)">Σ</div>
+            <h3>Paramètres du schéma</h3>
+            <svg class="chevron open" id="ch-schema-params" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+          </div>
+          <div class="card-body" id="sec-schema-params">
+            <div id="schema-params-table"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== HISTORY TAB ===== -->
+    <div class="tab-pane" id="pane-history">
+      <div style="padding:14px 12px 6px;display:flex;align-items:center;gap:8px">
+        <input type="text" id="hist-search" placeholder="🔍 Rechercher un tir…" oninput="window.app.filterHistory()" style="flex:1">
+        <button class="btn btn-secondary btn-sm" onclick="window.app.exportAllData()">📥 Export</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-input').click()">📤 Import</button>
+        <input type="file" id="import-input" accept=".json" style="display:none" onchange="window.app.handleImport(event)">
+      </div>
+      <div id="history-list"></div>
+      <div id="history-empty" class="empty-state" style="display:none">
+        <div class="es-icon">📚</div>
+        <h3>Aucun tir finalisé</h3>
+        <p>Les tirs finalisés apparaîtront ici</p>
+      </div>
+    </div>
+
+    <!-- ===== SETTINGS TAB ===== -->
+    <div class="tab-pane" id="pane-settings">
+      <div class="settings-section">
+        <h3>👤 Profil boutefeu</h3>
+        <div class="settings-group">
+          <div class="settings-row"><label>Prénom</label><input type="text" id="s-first" oninput="window.app.saveSettings()" autocomplete="given-name"></div>
+          <div class="settings-row"><label>Nom</label><input type="text" id="s-last" oninput="window.app.saveSettings()" autocomplete="family-name"></div>
+          <div class="settings-row"><label>No permis SQ</label><input type="text" id="s-sq" oninput="window.app.saveSettings()"></div>
+          <div class="settings-row"><label>No CCQ</label><input type="text" id="s-ccq" oninput="window.app.saveSettings()"></div>
+          <div class="settings-row"><label>Employeur</label><input type="text" id="s-employer" oninput="window.app.saveSettings()"></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>🏗️ Chantier</h3>
+        <div class="settings-group">
+          <div class="settings-row"><label>Projet</label><input type="text" id="s-project" oninput="window.app.saveSettings()"></div>
+          <div class="settings-row"><label>Entrepreneur</label><input type="text" id="s-contractor" oninput="window.app.saveSettings()"></div>
+          <div class="settings-row"><label>Maître d'œuvre</label><input type="text" id="s-owner" oninput="window.app.saveSettings()"></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>⚙️ Préférences</h3>
+        <div class="settings-group">
+          <div class="settings-row"><label>Sauvegarde auto (sec)</label><input type="number" id="s-autosave" value="30" min="5" max="300" oninput="window.app.saveSettings()"></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>💾 Données</h3>
+        <div class="settings-group">
+          <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px">
+            <button class="btn btn-secondary btn-full" onclick="window.app.exportAllData()">📥 Exporter toutes les données (JSON)</button>
+            <button class="btn btn-secondary btn-full" onclick="document.getElementById('import-settings-input').click()">📤 Importer une sauvegarde</button>
+            <input type="file" id="import-settings-input" accept=".json" style="display:none" onchange="window.app.handleImport(event)">
+            <button class="btn btn-danger btn-full" onclick="window.app.clearAllData()">🗑 Effacer toutes les données</button>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>ℹ️ À propos</h3>
+        <div class="settings-group">
+          <div class="settings-row"><label>Version</label><span style="font-size:13px;color:var(--text2)">3.0.0 PWA</span></div>
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+            <label>Conformité légale</label>
+            <p style="font-size:12px;color:var(--text3)">E-22, r.1 · CSTC S-2.1, r.4 · LCCJTI C-1.1 · DORS/2013-211</p>
+          </div>
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+            <label>Conservation minimale</label>
+            <p style="font-size:12px;color:var(--text3)">5 ans — jusqu'en 2031-2032 pour PLB</p>
+          </div>
+        </div>
+      </div>
+      <div style="height:20px"></div>
+    </div>
+
+  </div><!-- #content -->
+</div><!-- #app -->
+
+<!-- ===== PDF IMPORT MODAL ===== -->
+<div class="modal-overlay" id="pdf-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📄 Importer un plan de sautage</div>
+    <div class="modal-sub">Sélectionnez le fichier PDF du plan de sautage</div>
+
+    <div id="pdf-drop-zone" onclick="document.getElementById('pdf-file-input').click()"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="window.app.handlePDFDrop(event)"
+         style="border:2px dashed var(--border2);border-radius:var(--radius);padding:28px 16px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:4px">
+      <div style="font-size:36px;margin-bottom:10px">📄</div>
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Sélectionner un PDF</div>
+      <div style="font-size:12px;color:var(--text3)">Appuyez pour parcourir · Ou glissez un fichier ici</div>
+    </div>
+    <input type="file" id="pdf-file-input" accept="application/pdf,.pdf" style="display:none"
+           onchange="window.app.handlePDFFile(this.files[0])">
+
+    <div id="pdf-loading" style="display:none;text-align:center;padding:18px 0">
+      <div class="pdf-spinner"></div>
+      <div style="font-size:13px;color:var(--text2);margin-top:10px" id="pdf-loading-msg">Extraction du texte en cours…</div>
+    </div>
+
+    <div id="pdf-parse-result" style="display:none;margin-top:10px">
+      <div class="alert alert-success">✅ Données extraites avec succès</div>
+      <div id="pdf-detected-fields" style="max-height:200px;overflow-y:auto"></div>
+    </div>
+    <div id="pdf-parse-error" class="alert alert-danger" style="display:none;margin-top:10px"></div>
+
+    <div style="margin-top:12px">
+      <button onclick="window.app.togglePDFPasteArea()" id="btn-toggle-paste"
+              style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:4px 0;display:flex;align-items:center;gap:6px">
+        <span id="paste-toggle-icon">▶</span> Ou coller le texte manuellement
+      </button>
+      <div id="pdf-paste-wrapper" style="display:none;margin-top:8px">
+        <textarea id="pdf-paste-area" style="height:120px;font-size:12px;font-family:monospace" placeholder="Collez ici le texte extrait du PDF…"></textarea>
+        <button class="btn btn-secondary" style="margin-top:8px;width:100%" onclick="window.app.handlePDFPaste()">🔍 Analyser le texte</button>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="window.app.closeModal('pdf-modal')">Annuler</button>
+      <button class="btn btn-primary" id="btn-apply-pdf" style="display:none" onclick="window.app.applyPDFData()">✅ Utiliser</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CONFIRM MODAL ===== -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-sheet" style="max-height:45vh">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="confirm-title">Confirmer</div>
+    <p style="font-size:14px;color:var(--text2);margin-bottom:16px" id="confirm-msg"></p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="window.app.closeModal('confirm-modal')">Annuler</button>
+      <button class="btn btn-danger" id="confirm-ok">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<!-- Main app module -->
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

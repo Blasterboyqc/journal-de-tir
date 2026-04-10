@@ -1,0 +1,14 @@
+{
+  "name": "journal-tir-plb",
+  "version": "3.0.0",
+  "description": "Journal de tir électronique PWA — Prolongement Ligne Bleue",
+  "private": true,
+  "scripts": {
+    "test": "node /workspace/scratch/parser-test.js",
+    "start": "npx serve .",
+    "deploy": "vercel --prod"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
