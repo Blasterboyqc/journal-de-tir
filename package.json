@@ -3,8 +3,10 @@
   "version": "3.0.0",
   "description": "Journal de tir électronique PWA — Prolongement Ligne Bleue",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test": "node /workspace/scratch/parser-test.js",
+    "test": "node tests/parser.test.mjs",
+    "test:legacy": "node /workspace/scratch/parser-test.js",
     "start": "npx serve .",
     "deploy": "vercel --prod"
   },

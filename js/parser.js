@@ -433,6 +433,31 @@ export function parsePDFText(rawText) {
   }
   m = t.match(/Fardeau\s+\[m\]\s+([\d,.]+)/i);
   if (m) { ext.fardeau = frNum(m[1]); conf.fardeau = 'high'; }
+  // BANQUETTE: fardeau unlabeled row — appears before "Espacement [m]"
+  // In DWG-3002 style, the fardeau row has no label in the extracted text
+  if (!ext.fardeau && ext.zone === 'BANQUETTE') {
+    // Find the unlabeled [m] row immediately preceding the Espacement row
+    const espBeforeMatch = rawText.match(/\[m\]\s+([\d\.\s]+)\s*\n\s*\n?\s*Espacement\s+\[m\]/i);
+    if (espBeforeMatch) {
+      const fardeauVals = (espBeforeMatch[1].match(/[\d.]+/g) || []).map(Number).filter(v => v > 0 && v < 5);
+      // Use the same column index as espacement (based on trousMasse)
+      const trousMasse2 = ext.trousMasse || 0;
+      if (trousMasse2 > 0 && fardeauVals.length > 0) {
+        const masseRowPat2 = /Nombre\s+de\s+trous\s+charg[eé]s\s*-\s*([\d\s]+)\n\s+\[un\]/i;
+        const mMatch2 = masseRowPat2.exec(rawText);
+        if (mMatch2) {
+          const masseVals2 = (mMatch2[1].match(/\d+/g) || []).map(Number);
+          const colIdx2 = masseVals2.indexOf(trousMasse2);
+          if (colIdx2 >= 0 && colIdx2 < fardeauVals.length) {
+            ext.fardeau = fardeauVals[colIdx2]; conf.fardeau = 'high';
+          }
+        }
+      }
+      if (!ext.fardeau && fardeauVals.length > 0) {
+        ext.fardeau = fardeauVals[0]; conf.fardeau = 'medium';
+      }
+    }
+  }
   m = t.match(/Sous-forage\s+\[m\]\s+([\d,.]+)/i);
   if (m) { ext.sousFogage = frNum(m[1]); conf.sousFogage = 'medium'; }
   m = t.match(/Collet\s+\(total\)\s+dans\s+le\s+roc\s+\[m\]\s+([\d,.]+)/i);
