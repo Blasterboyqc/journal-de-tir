@@ -14,15 +14,15 @@ let pdfjsLib = null;
 export async function initPDFJS() {
   if (pdfjsLib) return pdfjsLib;
   try {
-    const mod = await import('../lib/pdf.min.mjs');
+    const mod = await import('../lib/pdf.min.js');
     pdfjsLib = mod;
     // Use local worker for offline/PWA support
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './lib/pdf.worker.min.js';
     console.log('PDF.js initialized, version:', pdfjsLib.version || '4.0.379');
     return pdfjsLib;
   } catch (err) {
     console.error('Failed to load PDF.js:', err);
-    throw new Error('PDF.js non disponible. Vérifiez que lib/pdf.min.mjs est présent.');
+    throw new Error('PDF.js non disponible. Vérifiez que lib/pdf.min.js est présent.');
   }
 }
 
