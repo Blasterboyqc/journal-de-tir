@@ -4,7 +4,27 @@
  * Extracted from journal-tir-v3-final.html
  */
 
+/**
+ * Detect and strip X-tab metadata format produced by pdf-import.js.
+ * Input format: each line is "x1\tstr1\tx2\tstr2\t..."
+ * Returns plain text with items joined by spaces.
+ */
+function stripXTabFormat(raw) {
+  // Check if this looks like X-tab encoded format (lines starting with digits\ttext)
+  if (!/^\d+\t/.test(raw.split('\n').find(l => l.trim()) || '')) return raw;
+  return raw.split('\n').map(line => {
+    if (!/^\d+\t/.test(line)) return line; // not an encoded line, keep as-is
+    const parts = line.split('\t');
+    const texts = [];
+    for (let i = 1; i < parts.length; i += 2) {
+      if (parts[i]) texts.push(parts[i]);
+    }
+    return texts.join(' ');
+  }).join('\n');
+}
+
 export function normalizePDFText(raw) {
+  const decoded = stripXTabFormat(raw);
   const fixes = [
     [/A\s+L[ÉE]SA\s*GE/gi, 'ALÉSAGE'],
     [/A\s+LÉSA\s*GE/gi, 'ALÉSAGE'],
@@ -50,7 +70,7 @@ export function normalizePDFText(raw) {
     [/Fact\s+eur\s+charge\s+t\s*héorique/gi, 'Facteur charge théorique'],
     [/PÉRIMÉT\s*RIQUES/g, 'PÉRIMÉTRIQUES'],
   ];
-  let t = raw;
+  let t = decoded;
   for (const [pat, rep] of fixes) t = t.replace(pat, rep);
   return t;
 }
@@ -70,38 +90,100 @@ function detectZone(allText) {
  * Extract personnel names using column-position approach.
  * Handles PDF layouts where CONÇU PAR : and DESSINÉ PAR : appear on one line,
  * with names on the next line in matching column positions.
+ * Handles both plain text (old format) and X-tab encoded format from pdf-import.js.
+ * X-tab format: each line is "x1\tstr1\tx2\tstr2\t..."
  */
 function extractPersonnelFromPDF(rawText) {
   const lines = rawText.split('\n');
   const result = {};
+  const isXTab = /^\d+\t/.test(lines.find(l => l.trim()) || '');
+
+  /**
+   * Parse an X-tab encoded line into [{x, str}] pairs.
+   */
+  function parseXTabLine(line) {
+    if (!/^\d+\t/.test(line)) return null;
+    const parts = line.split('\t');
+    const items = [];
+    for (let i = 0; i < parts.length - 1; i += 2) {
+      const x = parseFloat(parts[i]);
+      const str = parts[i + 1] || '';
+      if (str.trim()) items.push({ x, str });
+    }
+    return items;
+  }
+
+  /**
+   * Find the value at a given X position (±tolerance) in an X-tab items array.
+   */
+  function findAtX(items, targetX, tol = 20) {
+    const found = items.filter(it => Math.abs(it.x - targetX) <= tol);
+    found.sort((a, b) => Math.abs(a.x - targetX) - Math.abs(b.x - targetX));
+    return found[0] ? found[0].str.trim() : null;
+  }
+
   for (let i = 0; i < lines.length - 1; i++) {
     const line = lines[i];
     if (/CON[ÇC]U\s+PAR\s*:/i.test(line)) {
-      const concuPos = line.search(/CON[ÇC]U\s+PAR\s*:/i);
-      const desPos = line.search(/DESSIN[ÉE]\s+PAR\s*:/i);
       let nameLineIdx = i + 1;
       while (nameLineIdx < lines.length && !lines[nameLineIdx].trim()) nameLineIdx++;
       const nameLine = lines[nameLineIdx] || '';
-      if (nameLine && concuPos >= 0 && !result.concuPar) {
-        const concuArea = nameLine.substring(concuPos).trim();
-        const concuName = concuArea.split(/\s{3,}/)[0].trim();
-        if (concuName && /[A-Za-zÀ-ü]/.test(concuName)) result.concuPar = concuName;
-      }
-      if (nameLine && desPos >= 0 && !result.dessinePar) {
-        const desArea = nameLine.substring(desPos).trim();
-        const desName = desArea.split(/\s{3,}/)[0].trim();
-        if (desName && /[A-Za-zÀ-ü]/.test(desName)) result.dessinePar = desName;
+
+      if (isXTab) {
+        // X-tab format: match by X position
+        const labelItems = parseXTabLine(line);
+        const nameItems = parseXTabLine(nameLine);
+        if (labelItems && nameItems) {
+          const concuItem = labelItems.find(it => /CON[ÇC]U\s+PAR/i.test(it.str));
+          const desItem = labelItems.find(it => /DESSIN[ÉE]\s+PAR/i.test(it.str));
+          if (concuItem && !result.concuPar) {
+            const name = findAtX(nameItems, concuItem.x);
+            if (name && /[A-Za-zÀ-ü]/.test(name) && !/^\d{4}/.test(name)) result.concuPar = name;
+          }
+          if (desItem && !result.dessinePar) {
+            const name = findAtX(nameItems, desItem.x);
+            if (name && /[A-Za-zÀ-ü]/.test(name) && !/^\d{4}/.test(name)) result.dessinePar = name;
+          }
+        }
+      } else {
+        // Plain text format: use character position (legacy)
+        const concuPos = line.search(/CON[ÇC]U\s+PAR\s*:/i);
+        const desPos = line.search(/DESSIN[ÉE]\s+PAR\s*:/i);
+        if (concuPos >= 0 && !result.concuPar) {
+          const concuArea = nameLine.substring(concuPos).trim();
+          const concuName = concuArea.split(/\s{3,}/)[0].trim();
+          if (concuName && /[A-Za-zÀ-ü]/.test(concuName)) result.concuPar = concuName;
+        }
+        if (desPos >= 0 && !result.dessinePar) {
+          const desArea = nameLine.substring(desPos).trim();
+          const desName = desArea.split(/\s{3,}/)[0].trim();
+          if (desName && /[A-Za-zÀ-ü]/.test(desName)) result.dessinePar = desName;
+        }
       }
     }
+
     if (/V[ÉE]RIFI[ÉE]\s+PAR\s*:/i.test(line) && !result.verifiePar) {
-      const verifPos = line.search(/V[ÉE]RIFI[ÉE]\s+PAR\s*:/i);
       let nameLineIdx = i + 1;
       while (nameLineIdx < lines.length && !lines[nameLineIdx].trim()) nameLineIdx++;
       const nameLine = lines[nameLineIdx] || '';
-      if (nameLine && verifPos >= 0) {
-        const verifArea = nameLine.substring(verifPos).trim();
-        const verifName = verifArea.split(/\s{3,}/)[0].trim();
-        if (verifName && /[A-Za-zÀ-ü]/.test(verifName)) result.verifiePar = verifName;
+
+      if (isXTab) {
+        const labelItems = parseXTabLine(line);
+        const nameItems = parseXTabLine(nameLine);
+        if (labelItems && nameItems) {
+          const verifItem = labelItems.find(it => /V[ÉE]RIFI[ÉE]\s+PAR/i.test(it.str));
+          if (verifItem) {
+            const name = findAtX(nameItems, verifItem.x);
+            if (name && /[A-Za-zÀ-ü]/.test(name) && !/^\d{4}/.test(name)) result.verifiePar = name;
+          }
+        }
+      } else {
+        const verifPos = line.search(/V[ÉE]RIFI[ÉE]\s+PAR\s*:/i);
+        if (verifPos >= 0) {
+          const verifArea = nameLine.substring(verifPos).trim();
+          const verifName = verifArea.split(/\s{3,}/)[0].trim();
+          if (verifName && /[A-Za-zÀ-ü]/.test(verifName)) result.verifiePar = verifName;
+        }
       }
     }
   }
@@ -137,8 +219,10 @@ export function parsePDFText(rawText) {
   let m = t.match(/(\d{7}-\d{6}-\d+[A-Z]+-DWG-\d{4})/);
   if (m) { ext.dessinNo = m[1]; conf.dessinNo = 'high'; }
 
-  // Revision
+  // Revision — try adjacent "RÉV. R00" first, then standalone R00 near drawing number
   m = t.match(/R[ÉE]V\.?\s*(R\d{2})\b/);
+  if (!m) m = t.match(/\bRÉV\.\s*\n\s*(R\d{2})\b/);
+  if (!m) m = t.match(/(?:FEUILLE|FORMAT|RÉV)[^\n]*\n[^\n]*(R\d{2})\b/i);
   if (m) { ext.revision = m[1]; conf.revision = 'high'; }
 
   // Date
@@ -314,6 +398,7 @@ export function parsePDFText(rawText) {
     const trousMasse = ext.trousMasse || 0;
     const scenarioIdx = findBanquetteScenarioIdx(rawText, trousMasse);
 
+    // chargeMatch: value may be on same line (Y-sorted pdfjs) or on next line (old format)
     const chargeMatch = t.match(/Charge\s+explosive\s+totale\s+\[kg\]\s+([\d\s.]+)/i);
     const chargeVals = chargeMatch ?
       (chargeMatch[1].match(/\d+\.?\d*/g) || []).map(Number).filter(v => v > 10) : [];
@@ -321,16 +406,21 @@ export function parsePDFText(rawText) {
     if (scenarioIdx >= 0 && scenarioIdx < chargeVals.length) {
       ext.chargeTotaleKg = chargeVals[scenarioIdx];
       conf.chargeTotaleKg = 'high';
+    } else if (chargeVals.length === 1) {
+      // Single value scenario (already Y-sorted, only one column shown)
+      ext.chargeTotaleKg = chargeVals[0];
+      conf.chargeTotaleKg = 'high';
     } else {
       const detChargeMatch = t.match(/DÉTAILS\s*\/\s*ZONE\s+DE\s+TIR[\s\S]*?Charge\s+explosive\s+totale\s+\[kg\]\s+([\d,.]+)/i);
       if (detChargeMatch) { ext.chargeTotaleKg = frNum(detChargeMatch[1]); conf.chargeTotaleKg = 'high'; }
     }
 
-    const factDetMatch = t.match(/DÉTAILS\s*\/\s*ZONE\s+DE\s+TIR[\s\S]*?Facteur\s+de\s+chargement\s+\(par\s+t[iu]r\)\s+\[kg\/m[³3]\]\s+([\d,\.]+)/i);
+    // facteurTir: handle [kg/m 3 ] (with space) from pdfjs, in addition to [kg/m³]
+    const factDetMatch = t.match(/DÉTAILS\s*\/\s*ZONE\s+DE\s+TIR[\s\S]*?Facteur\s+de\s+chargement\s+\(par\s+t[iu]r\)\s+\[kg\/m[³3\s]*\]\s+([\d,\.]+)/i);
     if (factDetMatch) {
       ext.facteurTir = frNum(factDetMatch[1]); conf.facteurTir = 'high';
     } else {
-      const factMultiMatch = t.match(/Facteur\s+de\s+chargement\s+\(par[\s\S]*?\[kg\/m[³3]?\s*\]\s*([\d\s.,]+)/i);
+      const factMultiMatch = t.match(/Facteur\s+de\s+chargement\s+\(par[\s\S]*?\[kg\/m[³3\s]*\]\s*([\d\s.,]+)/i);
       if (factMultiMatch && scenarioIdx >= 0) {
         const factVals = (factMultiMatch[1].match(/[\d.]+/g) || []).map(Number).filter(v => v > 0.1 && v < 5);
         if (scenarioIdx < factVals.length) { ext.facteurTir = factVals[scenarioIdx]; conf.facteurTir = 'high'; }
@@ -392,6 +482,7 @@ export function parsePDFText(rawText) {
   if (m) ext.powercord200m = frNum(m[1]);
 
   // 9. Zone dimensions
+  // Unit notation may include spaces from pdfjs: "[m 2 ]" instead of "[m²]", "[m 3 ]" instead of "[m³]"
   if (!ext.largeur) {
     m = t.match(/Largeur\s+\[m\]\s*([\d,.]+)/i);
     if (m) { ext.largeur = frNum(m[1]); conf.largeur = 'high'; }
@@ -400,12 +491,12 @@ export function parsePDFText(rawText) {
     m = t.match(/Longueur\s+\[m\]\s*([\d,.]+)/i);
     if (m) { ext.longueur = frNum(m[1]); conf.longueur = 'high'; }
   }
-  m = t.match(/Superficie\s+\[m[²2]?\s*\]\s*([\d,.]+)/i);
-  if (!m) m = t.match(/Surface\s+\(aire\)\s+du\s+tir\s+\[m[²2]?\s*\]\s*([\d,.]+)/i);
+  m = t.match(/Superficie\s+\[m[²2\s]*\]\s*([\d,.]+)/i);
+  if (!m) m = t.match(/Surface\s+\(aire\)\s+du\s+tir\s+\[m[²2\s]*\]\s*([\d,.]+)/i);
   if (m) { ext.superficie = frNum(m[1]); conf.superficie = 'high'; }
   if (!ext.volume) {
-    m = t.match(/Volume\s+roc\s*\/\s*vol[eé]e\s+\[m[³3]?\s*\]\s*([\d,.]+)/i);
-    if (!m) m = t.match(/Volume\s+\[m[³3]?\s*\]\s*([\d,.]+)/i);
+    m = t.match(/Volume\s+roc\s*\/\s*vol[eé]e\s+\[m[³3\s]*\]\s*([\d,.]+)/i);
+    if (!m) m = t.match(/Volume\s+\[m[³3\s]*\]\s*([\d,.]+)/i);
     if (m) {
       const v = frNum(m[1]);
       if (v && v > 10) { ext.volume = v; conf.volume = 'high'; }
