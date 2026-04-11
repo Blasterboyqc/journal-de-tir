@@ -1,53 +1,61 @@
-# Journal de Tir PLB — PWA
+# 💥 Journal de Tir — Application PWA pour boutefeux québécois
 
-Journal de tir électronique pour le Prolongement Ligne Bleue (PLB) — Métro de Montréal.
+> **Fait par un boutefeu, pour les boutefeux.**
 
-## Déploiement
+Application Progressive Web App (PWA) pour la documentation et gestion des journaux de tir au Québec. Conforme au Règlement E-22 sur les explosifs.
 
-### Vercel (recommandé)
+## 🇨🇦 À propos
+
+Journal de Tir est la première application mobile conçue spécifiquement pour les **boutefeux québécois** :
+- ✅ **100% en français québécois** — toute l'interface
+- ✅ **Conforme E-22 / CSTC / CNESST** — formulaires réglementaires
+- ✅ **Mode hors-ligne** — fonctionne sans connexion internet
+- ✅ **Données locales** — tout reste sur votre appareil (IndexedDB)
+- ✅ **Installable** — "Ajouter à l'écran d'accueil" sur iOS et Android
+
+## 🛠️ Stack technique
+
+- **SvelteKit** — Framework web moderne
+- **Tailwind CSS** — Styles utilitaires
+- **Dexie.js** — IndexedDB (stockage offline)
+- **jsPDF** — Génération PDF côté client
+- **@sveltejs/adapter-static** — Build statique pour Vercel
+
+## 📱 Fonctionnalités
+
+1. **Tableau de bord** — Statistiques rapides, journaux récents
+2. **Profil boutefeu** — Certificat CSTC, permis SQ, employeur
+3. **Journal de tir** — Formulaire complet conforme E-22 :
+   - Identification du chantier
+   - Identification du boutefeu et permis
+   - Conditions météo et géologie
+   - Plan de forage (espacement, fardeau, profondeur...)
+   - Explosifs et détonateurs (tableau multi-lignes)
+   - Mesures de sécurité (checklist)
+   - Résultats du tir et observations
+   - Signature électronique
+4. **Historique** — Liste, recherche et filtre par statut
+5. **Export PDF** — Journal complet en PDF professionnel
+
+## 🚀 Développement
+
 ```bash
-npm install -g vercel
-vercel --prod
+npm install
+npm run dev
 ```
 
-### Netlify
-Glissez-déposez le dossier du projet sur [netlify.com/drop](https://app.netlify.com/drop)
+## 🏗️ Build
 
-### Serveur local (développement)
 ```bash
-npx serve .
+npm run build
 ```
 
-## Structure
-```
-journal-tir/
-├── index.html          # Application principale
-├── css/style.css       # Styles dark mode
-├── js/
-│   ├── app.js          # Logique principale
-│   ├── parser.js       # Parseur de plans PDF
-│   ├── schematic.js    # Générateur SVG
-│   └── pdf-import.js   # Import PDF.js
-├── lib/
-│   ├── pdf.min.mjs     # PDF.js 4.0.379
-│   └── pdf.worker.min.mjs
-├── manifest.json       # PWA manifest
-├── sw.js               # Service Worker
-└── icons/              # Icônes PWA
-```
+## 📋 Réglementation
 
-## Conformité légale
-- **E-22, r.1** — Règlement sur les explosifs (Québec)
-- **CSTC S-2.1, r.4** — Code de sécurité pour les travaux de construction
-- **LCCJTI C-1.1** — Cadre juridique des technologies de l'information
-- **DORS/2013-211** — Règlement sur les explosifs (fédéral)
+- [Loi sur les explosifs E-22 — LégisQuébec](https://legisquebec.gouv.qc.ca/fr/ShowDoc/cr/e-22,%20r.%201)
+- [Règlement CSTC — CNESST](https://www.cnesst.gouv.qc.ca)
+- [CCQ — Métier boutefeu-foreur](https://releve.ccq.org/fr-CA/metiers/boutefeu-foreur)
 
-## Fonctionnalités
-- 📱 PWA installable sur Android/iOS
-- 📴 Fonctionne hors ligne (Service Worker)
-- 📄 Import PDF de plans de sautage (PDF.js)
-- 📐 Schéma de tir SVG automatique
-- 💾 Sauvegarde localStorage + export JSON
-- ✍️ Signatures électroniques (LCCJTI)
-- 🔐 Piste d'audit SHA-256
-- 🖨️ Export PDF (impression navigateur)
+---
+
+*Développé par Raphaël — Boutefeu, PLB Metro Montréal*

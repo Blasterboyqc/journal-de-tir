@@ -1,0 +1,41 @@
+{
+  "name": "Journal de Tir — Boutefeux Québec",
+  "short_name": "Journal de Tir",
+  "description": "Application PWA pour boutefeux québécois — Conforme Règlement E-22",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "orientation": "portrait-primary",
+  "lang": "fr",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Nouveau journal de tir",
+      "short_name": "Nouveau tir",
+      "description": "Créer un nouveau journal de tir",
+      "url": "/journal/new",
+      "icons": [{"src": "/icons/icon-192.png", "sizes": "192x192"}]
+    }
+  ]
+}
