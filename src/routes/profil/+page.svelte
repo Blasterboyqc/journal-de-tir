@@ -18,7 +18,10 @@
     telephone: '',
     email: '',
     updatedAt: '',
+    gemini_api_key: '',
   });
+
+  let showGeminiKey = $state(false);
 
   onMount(async () => {
     const profil = await getProfil();
@@ -32,6 +35,7 @@
       form.chantier_actuel = profil.chantier_actuel || '';
       form.telephone = profil.telephone || '';
       form.email = profil.email || '';
+      form.gemini_api_key = profil.gemini_api_key || '';
       hasProfil = true;
     }
     loading = false;
@@ -208,6 +212,77 @@
         ">
           💡 Ces informations seront automatiquement remplies dans tous vos nouveaux journaux de tir.
         </div>
+      </div>
+    </div>
+
+    <!-- Vision AI / Gemini API Key -->
+    <div class="card">
+      <div class="card-header" style="cursor: default;">
+        <div class="section-letter">④</div>
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Vision AI — Gemini</h3>
+      </div>
+      <div class="card-body">
+        {#if !form.gemini_api_key}
+          <div style="
+            background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.3);
+            border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px;
+            font-size: 12px; color: #a78bfa;
+          ">
+            🤖 <strong>Clé API requise</strong> — Ajoutez votre clé Gemini pour activer l'extraction automatique des séquences de tir (Vision AI).
+          </div>
+        {/if}
+        <div class="form-row cols1">
+          <div class="form-group">
+            <label for="gemini_api_key">🔑 Clé API Gemini (pour Vision AI)</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              {#if showGeminiKey}
+                <input
+                  id="gemini_api_key"
+                  type="text"
+                  bind:value={form.gemini_api_key}
+                  placeholder="AIzaSy..."
+                  style="flex: 1; font-family: monospace; font-size: 12px;"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              {:else}
+                <input
+                  id="gemini_api_key"
+                  type="password"
+                  bind:value={form.gemini_api_key}
+                  placeholder="AIzaSy..."
+                  style="flex: 1;"
+                  autocomplete="off"
+                >
+              {/if}
+              <button
+                type="button"
+                onclick={() => showGeminiKey = !showGeminiKey}
+                style="
+                  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 13px;
+                  background: var(--card2); border: 1px solid var(--border);
+                  color: var(--text2); cursor: pointer; font-family: inherit;
+                  flex-shrink: 0;
+                "
+                title={showGeminiKey ? 'Masquer' : 'Afficher'}
+              >
+                {showGeminiKey ? '🙈' : '👁️'}
+              </button>
+            </div>
+            <div style="font-size: 11px; color: var(--text3); margin-top: 6px;">
+              Obtenez votre clé gratuite sur <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent2);">aistudio.google.com/apikey</a>
+            </div>
+          </div>
+        </div>
+        {#if form.gemini_api_key}
+          <div style="
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.25);
+            border-radius: var(--radius-sm); font-size: 12px; color: var(--green);
+          ">
+            ✅ Clé API configurée — Vision AI disponible
+          </div>
+        {/if}
       </div>
     </div>
 

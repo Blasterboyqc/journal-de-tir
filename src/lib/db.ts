@@ -12,6 +12,7 @@ export interface ProfilBoutefeu {
   telephone: string;
   email: string;
   updatedAt: string;
+  gemini_api_key?: string;
 }
 
 export interface JournalTir {
@@ -207,6 +208,11 @@ class JournalDB extends Dexie {
     });
     // Version 4: adds patron_forage_dataurl (freehand drawing canvas)
     this.version(4).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    // Version 5: adds gemini_api_key to profil (stored in IndexedDB, not source code)
+    this.version(5).stores({
       profil: '++id',
       journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
     });

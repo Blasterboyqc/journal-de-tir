@@ -602,12 +602,13 @@
     } catch (err: unknown) {
       console.error('Vision extraction error:', err);
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-      if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to fetch')) {
-        showToast('❌ API Vision inaccessible. Vérifiez l\'URL ou déployez l\'API.', 'error');
-      } else if (msg.includes('GEMINI_API_KEY') || msg.includes('API key')) {
-        showToast('❌ Clé API Gemini manquante. Configurez GEMINI_API_KEY sur le serveur.', 'error');
+      if (msg === 'NO_API_KEY') {
+        showToast('⚠️ Ajoutez votre clé API Gemini dans le Profil', 'error');
+        setTimeout(() => goto(base + '/profil'), 1200);
       } else if (msg.includes('quota') || msg.includes('429')) {
         showToast('⏳ Quota Gemini dépassé. Attendez une minute et réessayez.', 'error');
+      } else if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+        showToast('❌ Clé API Gemini invalide. Vérifiez votre clé dans le Profil.', 'error');
       } else {
         showToast(`❌ Erreur Vision AI: ${msg.substring(0, 80)}`, 'error');
       }

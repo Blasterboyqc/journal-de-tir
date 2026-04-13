@@ -2,11 +2,12 @@
  * vision-extract.ts
  *
  * Client-side Vision AI integration for Journal de Tir.
+ * Calls Google Gemini API directly from the browser (no backend needed).
  *
  * Responsibilities:
  * 1. Extract a specific page from a PDF file as a high-quality base64 JPEG
  *    using pdfjs-dist + HTMLCanvasElement (browser environment)
- * 2. Send the image to the Vision AI API endpoint
+ * 2. Send the image directly to Google Gemini Vision API
  * 3. Return structured firing sequence data (holes, connections, metadata)
  *
  * Page C (firing sequence diagram) is typically page index 2 (3rd page, 0-indexed)
@@ -14,19 +15,16 @@
  */
 
 import type { FiringSequence } from '$lib/db';
+import { getProfil } from '$lib/db';
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
 /**
- * The Vision AI API endpoint.
- * Override with VITE_VISION_API_URL environment variable for different environments.
- *
- * Production: https://journal-tir-api.vercel.app/api/vision-extract
- * Development: http://localhost:3000/api/vision-extract
+ * Gemini API endpoint (REST, no SDK needed).
+ * Uses gemini-2.0-flash which is fast, free tier, and handles images well.
  */
-export const VISION_API_URL: string =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_VISION_API_URL) ||
-  'https://journal-tir-api.vercel.app/api/vision-extract';
+export const GEMINI_API_BASE =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 /**
  * Page index for the firing sequence page (Page C).
@@ -156,82 +154,198 @@ export async function renderPdfPageToBase64(
   };
 }
 
-// ─── Vision API Call ───────────────────────────────────────────────────────────
+// ─── Gemini Vision API Call ────────────────────────────────────────────────────
 
 /**
- * Calls the Vision AI API with a base64 image.
- *
- * @param request  The API request with image and optional shot info
- * @param apiUrl   Optional override for the API URL
- * @returns        The parsed API response
+ * Tries to extract a JSON object from text that may contain markdown code fences.
+ * Gemini sometimes wraps JSON in ```json ... ``` blocks.
  */
-export async function callVisionAPI(
-  request: VisionAPIRequest,
-  apiUrl: string = VISION_API_URL
-): Promise<VisionAPIResponse> {
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(120_000), // 2 minute timeout for AI processing
-  });
-
-  let data: VisionAPIResponse;
-  try {
-    data = await response.json();
-  } catch (e) {
-    throw new Error(`API returned invalid JSON (status ${response.status})`);
+function extractJsonFromText(text: string): string {
+  // Try to extract from markdown code block
+  const markdownMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (markdownMatch) {
+    return markdownMatch[1].trim();
   }
+  // Try to find raw JSON object
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+  return text.trim();
+}
+
+/**
+ * Calls Google Gemini Vision API directly from the browser.
+ * API key is fetched from the user's profile in IndexedDB.
+ *
+ * @param base64Image   Base64-encoded image data (without data: prefix)
+ * @param imageType     MIME type (e.g. 'image/jpeg')
+ * @param apiKey        Gemini API key from profile
+ * @param shotInfo      Optional context about the shot
+ * @returns             Parsed VisionAPIResponse
+ */
+export async function callGeminiVisionAPI(
+  base64Image: string,
+  imageType: string,
+  apiKey: string,
+  shotInfo?: VisionAPIRequest['shotInfo']
+): Promise<VisionAPIResponse> {
+  const startTime = Date.now();
+
+  const prompt = `Analyze this blast plan firing sequence diagram. Extract all drill holes with their positions and delay times.
+
+Return a JSON object with this exact structure:
+{
+  "holes": [
+    {"id": 1, "x": 0.15, "y": 0.3, "delay_ms": 0, "type": "bouchon"},
+    {"id": 2, "x": 0.25, "y": 0.3, "delay_ms": 25, "type": "masse"}
+  ],
+  "connections": [
+    {"from": 1, "to": 2}
+  ],
+  "metadata": {
+    "totalHolesDetected": 144,
+    "delayRange": {"min": 0, "max": 500},
+    "confidence": 0.85,
+    "model": "gemini-2.0-flash"
+  }
+}
+
+Rules:
+- x and y are normalized coordinates (0.0 to 1.0) representing position on the diagram
+- delay_ms is the firing delay in milliseconds
+- type can be: "bouchon" (buffer/contour holes), "masse" (production holes), "tampon" (cushion holes)
+- connections show the firing sequence order (which hole fires after which)
+- Include ALL holes visible in the diagram
+- If delay values are shown on the diagram, use those exact values
+- If hole numbers are visible, use those as IDs
+
+${shotInfo ? `Additional context: Tir #${shotInfo.tirNumber || ''}, Banquette ${shotInfo.banquette || ''}, Expected ~${shotInfo.totalHoles || ''} holes` : ''}
+
+Return ONLY the JSON object, no markdown, no explanation.`;
+
+  const response = await fetch(
+    `${GEMINI_API_BASE}?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: imageType,
+                data: base64Image
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192
+        }
+      }),
+      signal: AbortSignal.timeout(120_000), // 2 minute timeout
+    }
+  );
 
   if (!response.ok) {
-    throw new Error(data.error || `API error: HTTP ${response.status}`);
+    let errorMsg = `Gemini API error: HTTP ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData?.error?.message || errorMsg;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(errorMsg);
   }
 
-  if (!data.success) {
-    throw new Error(data.error || 'Vision API returned success: false');
+  const geminiData = await response.json();
+
+  // Extract the text content from Gemini response
+  const textContent = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textContent) {
+    throw new Error('Gemini returned empty response');
   }
 
-  return data;
+  // Parse JSON from response (handle possible markdown wrapping)
+  let parsedData: any;
+  try {
+    const jsonText = extractJsonFromText(textContent);
+    parsedData = JSON.parse(jsonText);
+  } catch {
+    throw new Error(`Gemini response is not valid JSON: ${textContent.substring(0, 200)}`);
+  }
+
+  const processingTimeMs = Date.now() - startTime;
+
+  // Build VisionAPIResponse from Gemini parsed data
+  const holes = Array.isArray(parsedData.holes) ? parsedData.holes : [];
+  const connections = Array.isArray(parsedData.connections) ? parsedData.connections : [];
+  const metadata = parsedData.metadata || {};
+
+  const delayValues = holes.map((h: any) => h.delay_ms).filter((d: any) => typeof d === 'number');
+  const delayRange = delayValues.length > 0
+    ? { min: Math.min(...delayValues), max: Math.max(...delayValues) }
+    : { min: 0, max: 0 };
+
+  return {
+    success: true,
+    holes,
+    connections,
+    metadata: {
+      totalHolesDetected: metadata.totalHolesDetected ?? holes.length,
+      delayRange: metadata.delayRange ?? delayRange,
+      confidence: metadata.confidence ?? 0.8,
+      model: metadata.model ?? 'gemini-2.0-flash',
+      processingTimeMs,
+    },
+  };
 }
 
 // ─── Main Extraction Function ─────────────────────────────────────────────────
 
 /**
  * Full extraction pipeline:
- * 1. Renders Page C from the PDF to a JPEG image
- * 2. Sends to Vision AI API
- * 3. Returns structured FiringSequence data
+ * 1. Gets Gemini API key from profile (IndexedDB)
+ * 2. Renders Page C from the PDF to a JPEG image
+ * 3. Sends to Gemini Vision API directly
+ * 4. Returns structured FiringSequence data
  *
  * @param file       The PDF File object (blast plan)
  * @param shotInfo   Optional hints for the AI (total holes, tir number, etc.)
- * @param apiUrl     Optional override for the API URL
  * @returns          ExtractResult with FiringSequence and page image
+ * @throws           Error with user-friendly message if no API key set
  */
 export async function extractFiringSequence(
   file: File,
-  shotInfo?: VisionAPIRequest['shotInfo'],
-  apiUrl?: string
+  shotInfo?: VisionAPIRequest['shotInfo']
 ): Promise<ExtractResult> {
-  // Step 1: Render Page C to image
+  // Step 1: Get the Gemini API key from profile
+  const profil = await getProfil();
+  const apiKey = profil?.gemini_api_key?.trim();
+
+  if (!apiKey) {
+    throw new Error('NO_API_KEY');
+  }
+
+  // Step 2: Render Page C to image
   const imageData = await renderPdfPageToBase64(
     file,
     FIRING_SEQUENCE_PAGE_INDEX,
     PDF_RENDER_SCALE
   );
 
-  // Step 2: Call Vision API
-  const apiResponse = await callVisionAPI(
-    {
-      image: imageData.base64,
-      imageType: imageData.imageType,
-      shotInfo,
-    },
-    apiUrl
+  // Step 3: Call Gemini Vision API directly
+  const apiResponse = await callGeminiVisionAPI(
+    imageData.base64,
+    imageData.imageType,
+    apiKey,
+    shotInfo
   );
 
-  // Step 3: Build FiringSequence from API response
+  // Step 4: Build FiringSequence from API response
   const firingSequence: FiringSequence = {
     holes: apiResponse.holes,
     connections: apiResponse.connections,
