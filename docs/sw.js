@@ -1,5 +1,5 @@
 // Service Worker — Journal de Tir PWA
-const CACHE_NAME = 'journal-tir-v2';
+const CACHE_NAME = 'journal-tir-v3';
 const OFFLINE_URL = '/journal-de-tir/';
 
 // Assets to cache on install

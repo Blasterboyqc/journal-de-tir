@@ -1,1 +1,0 @@
-import{J as e}from"./gxaokRQK.js";import"./CjYw619R.js";e(!0);var t=e(null);function n(e,n=`success`){t.set({text:e,type:n}),setTimeout(()=>t.set(null),3500)}export{t as n,n as t};

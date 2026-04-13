@@ -336,12 +336,18 @@
     saving = true;
     try {
       const now = new Date().toISOString();
+      // Svelte 5 $state() creates Proxy objects that IndexedDB cannot serialize.
+      // Use $state.snapshot() to get plain, cloneable objects before saving to Dexie.
+      const formSnap = $state.snapshot(form);
+      const explosifsSnap = $state.snapshot(explosifs);
+      const gardiensSnap = $state.snapshot(gardiens);
+      const firingSnap = firingSequence ? $state.snapshot(firingSequence) : undefined;
       const id = await saveJournal({
-        ...form,
+        ...formSnap,
         statut,
-        explosifs,
-        gardiens,
-        firingSequence: firingSequence ?? undefined,
+        explosifs: explosifsSnap,
+        gardiens: gardiensSnap,
+        firingSequence: firingSnap,
         createdAt: now,
         updatedAt: now,
       });
