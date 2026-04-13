@@ -14,11 +14,11 @@
   let importing = $state(false);
   let visionExtracting = $state(false);
   let activeSection = $state(0);
-  let sigCanvas: HTMLCanvasElement;
+  let sigCanvas = $state<HTMLCanvasElement | null>(null);
   let sigCtx: CanvasRenderingContext2D | null = null;
   let sigDrawing = false;
   let sigLastX = 0, sigLastY = 0;
-  let pdfFileInput: HTMLInputElement;
+  let pdfFileInput = $state<HTMLInputElement | null>(null);
 
   // Import summary state
   let importSummary = $state<{

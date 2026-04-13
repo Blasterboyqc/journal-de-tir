@@ -13,7 +13,7 @@
   let deleting = $state(false);
   let importing = $state(false);
   let activeSection = $state(0);
-  let pdfFileInput: HTMLInputElement;
+  let pdfFileInput = $state<HTMLInputElement | null>(null);
 
   const id = $derived(parseInt($page.params.id));
 

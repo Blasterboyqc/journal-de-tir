@@ -54,19 +54,17 @@
     }
   }
 
-  // CSTC expiry check
-  const cstcExpired = $derived(() => {
-    if (!form.cstc_expiry) return false;
-    return new Date(form.cstc_expiry) < new Date();
-  });
+  // CSTC expiry check — Svelte 5 $derived takes an expression, not a function factory
+  const cstcExpired = $derived(
+    form.cstc_expiry ? new Date(form.cstc_expiry) < new Date() : false
+  );
 
-  const cstcExpiringSoon = $derived(() => {
-    if (!form.cstc_expiry) return false;
-    const exp = new Date(form.cstc_expiry);
-    const now = new Date();
-    const diff = exp.getTime() - now.getTime();
-    return diff > 0 && diff < 60 * 24 * 60 * 60 * 1000; // 60 days
-  });
+  const cstcExpiringSoon = $derived(
+    form.cstc_expiry
+      ? (new Date(form.cstc_expiry).getTime() - Date.now() > 0 &&
+         new Date(form.cstc_expiry).getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000)
+      : false
+  );
 </script>
 
 <div style="padding: 14px 12px 0;">
@@ -96,7 +94,7 @@
 
     <!-- CSTC Alerts -->
     {#if form.cstc_expiry}
-      {#if cstcExpired()}
+      {#if cstcExpired}
         <div style="
           background: var(--red-dim); border: 1px solid rgba(231,76,60,0.4);
           border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
@@ -104,7 +102,7 @@
         ">
           ⚠️ <strong>CERTIFICAT CSTC EXPIRÉ</strong> — Votre certificat a expiré le {form.cstc_expiry}. Renouvelez-le immédiatement.
         </div>
-      {:else if cstcExpiringSoon()}
+      {:else if cstcExpiringSoon}
         <div style="
           background: var(--yellow-dim); border: 1px solid rgba(243,156,18,0.4);
           border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
@@ -124,22 +122,22 @@
       <div class="card-body">
         <div class="form-row">
           <div class="form-group">
-            <label>Prénom <span style="color:var(--red)">*</span></label>
-            <input type="text" bind:value={form.prenom} placeholder="Votre prénom">
+            <label for="prenom">Prénom <span style="color:var(--red)">*</span></label>
+            <input id="prenom" type="text" bind:value={form.prenom} placeholder="Votre prénom">
           </div>
           <div class="form-group">
-            <label>Nom <span style="color:var(--red)">*</span></label>
-            <input type="text" bind:value={form.nom} placeholder="Votre nom">
+            <label for="nom">Nom <span style="color:var(--red)">*</span></label>
+            <input id="nom" type="text" bind:value={form.nom} placeholder="Votre nom">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Téléphone</label>
-            <input type="tel" bind:value={form.telephone} placeholder="ex: 514-555-0123">
+            <label for="telephone">Téléphone</label>
+            <input id="telephone" type="tel" bind:value={form.telephone} placeholder="ex: 514-555-0123">
           </div>
           <div class="form-group">
-            <label>Courriel</label>
-            <input type="email" bind:value={form.email} placeholder="votre@email.com">
+            <label for="email">Courriel</label>
+            <input id="email" type="email" bind:value={form.email} placeholder="votre@email.com">
           </div>
         </div>
       </div>
@@ -154,18 +152,18 @@
       <div class="card-body">
         <div class="form-row">
           <div class="form-group">
-            <label>Certificat CSTC <span style="color:var(--red)">*</span></label>
-            <input type="text" bind:value={form.certificat_cstc} placeholder="ex: BF-12345">
+            <label for="certificat_cstc">Certificat CSTC <span style="color:var(--red)">*</span></label>
+            <input id="certificat_cstc" type="text" bind:value={form.certificat_cstc} placeholder="ex: BF-12345">
           </div>
           <div class="form-group">
-            <label>Date d'expiration CSTC</label>
-            <input type="date" bind:value={form.cstc_expiry}>
+            <label for="cstc_expiry">Date d'expiration CSTC</label>
+            <input id="cstc_expiry" type="date" bind:value={form.cstc_expiry}>
           </div>
         </div>
         <div class="form-row cols1">
           <div class="form-group">
-            <label>Permis Sûreté du Québec <span style="color:var(--red)">*</span></label>
-            <input type="text" bind:value={form.permis_sq} placeholder="ex: SQ-2024-XXXXX">
+            <label for="permis_sq">Permis Sûreté du Québec <span style="color:var(--red)">*</span></label>
+            <input id="permis_sq" type="text" bind:value={form.permis_sq} placeholder="ex: SQ-2024-XXXXX">
           </div>
         </div>
 
@@ -173,12 +171,12 @@
         {#if form.certificat_cstc}
           <div style="
             display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            background: {cstcExpired() ? 'var(--red-dim)' : cstcExpiringSoon() ? 'var(--yellow-dim)' : 'var(--green-dim)'};
+            background: {cstcExpired ? 'var(--red-dim)' : cstcExpiringSoon ? 'var(--yellow-dim)' : 'var(--green-dim)'};
             border-radius: var(--radius-sm); font-size: 12px;
-            color: {cstcExpired() ? 'var(--red)' : cstcExpiringSoon() ? 'var(--yellow)' : 'var(--green)'};
+            color: {cstcExpired ? 'var(--red)' : cstcExpiringSoon ? 'var(--yellow)' : 'var(--green)'};
           ">
-            {cstcExpired() ? '⚠️ Certificat expiré' : cstcExpiringSoon() ? '⏰ Expire bientôt' : '✅ Certificat valide'}
-            {#if form.cstc_expiry}· Expiry: {form.cstc_expiry}{/if}
+            {cstcExpired ? '⚠️ Certificat expiré' : cstcExpiringSoon ? '⏰ Expire bientôt' : '✅ Certificat valide'}
+            {#if form.cstc_expiry}· Expiration: {form.cstc_expiry}{/if}
           </div>
         {/if}
       </div>
@@ -193,14 +191,14 @@
       <div class="card-body">
         <div class="form-row cols1">
           <div class="form-group">
-            <label>Employeur</label>
-            <input type="text" bind:value={form.employeur} placeholder="ex: Fafard Explosifs Inc.">
+            <label for="employeur">Employeur</label>
+            <input id="employeur" type="text" bind:value={form.employeur} placeholder="ex: Fafard Explosifs Inc.">
           </div>
         </div>
         <div class="form-row cols1">
           <div class="form-group">
-            <label>Chantier actuel</label>
-            <input type="text" bind:value={form.chantier_actuel} placeholder="ex: Prolongement ligne bleue métro">
+            <label for="chantier_actuel">Chantier actuel</label>
+            <input id="chantier_actuel" type="text" bind:value={form.chantier_actuel} placeholder="ex: Prolongement ligne bleue métro">
           </div>
         </div>
         <div style="
