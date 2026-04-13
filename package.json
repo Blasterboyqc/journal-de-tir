@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"postbuild": "find docs -name '*.mjs' -exec sh -c 'mv \"$1\" \"${1%.mjs}.js\"' _ {} \\; && find docs -name '*.js' -exec sed -i 's/\\.mjs/.js/g' {} \\; && find docs -name '*.html' -exec sed -i 's/\\.mjs/.js/g' {} \\; && touch docs/.nojekyll && cp docs/index.html docs/404.html",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
