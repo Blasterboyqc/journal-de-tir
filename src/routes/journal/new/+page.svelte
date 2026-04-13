@@ -5,6 +5,7 @@
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
   import { extractFiringSequence, summarizeFiringSequence, groupHolesByDelay, formatDelay, pdfHasFiringSequencePage } from '$lib/vision-extract';
+  import BlastPatternCanvas from '$lib/components/BlastPatternCanvas.svelte';
 
   // Form state
   let saving = $state(false);
@@ -855,7 +856,7 @@
           </button>
         </div>
       {:else}
-        <!-- Extraction complete — show results -->
+        <!-- Extraction complete — show Canvas + summary -->
         <div style="
           border: 1px solid rgba(139,92,246,0.3); border-radius: var(--radius-sm);
           background: rgba(139,92,246,0.05); overflow: hidden;
@@ -864,7 +865,7 @@
           <div style="
             padding: 10px 14px; background: rgba(139,92,246,0.1);
             border-bottom: 1px solid rgba(139,92,246,0.2);
-            display: flex; align-items: center; gap: 8px; justify-content: space-between;
+            display: flex; align-items: center; gap: 8px; justify-content: space-between; flex-wrap: wrap;
           ">
             <div>
               <span style="font-size: 13px; font-weight: 700; color: #a78bfa;">✅ Séquence extraite</span>
@@ -872,17 +873,27 @@
                 {summarizeFiringSequence(firingSequence)}
               </span>
             </div>
-            <div style="display: flex; gap: 6px;">
-              <button
-                onclick={() => { visionShowPreview = !visionShowPreview; }}
-                style="
-                  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
-                  background: transparent; border: 1px solid rgba(139,92,246,0.4);
-                  color: #a78bfa; cursor: pointer; font-family: inherit;
-                "
-              >
-                {visionShowPreview ? '▲ Masquer' : '▼ Détails'}
-              </button>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+              <!-- Stats chips -->
+              <span style="
+                font-size: 10px; font-weight: 600; padding: 2px 8px;
+                background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+                border-radius: 20px; color: #a78bfa;
+              ">{firingSequence.holes.length} trous</span>
+              {#if firingSequence.delayRange}
+                <span style="
+                  font-size: 10px; font-weight: 600; padding: 2px 8px;
+                  background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+                  border-radius: 20px; color: #a78bfa;
+                ">{firingSequence.delayRange.min}–{firingSequence.delayRange.max} ms</span>
+              {/if}
+              {#if firingSequence.confidence}
+                <span style="
+                  font-size: 10px; font-weight: 600; padding: 2px 8px;
+                  background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3);
+                  border-radius: 20px; color: #2ecc71;
+                ">{Math.round(firingSequence.confidence * 100)}% confiance</span>
+              {/if}
               <button
                 onclick={runVisionExtract}
                 disabled={visionExtracting}
@@ -897,103 +908,32 @@
             </div>
           </div>
 
-          {#if visionShowPreview}
-            <div style="padding: 12px 14px;">
-              <!-- Delay groups summary -->
-              {#if firingSequence.delayRange}
-                <div style="margin-bottom: 10px; font-size: 11px; color: var(--text3);">
-                  Plage de délais: <strong style="color: var(--text2);">
-                    {firingSequence.delayRange.min} ms – {firingSequence.delayRange.max} ms
-                  </strong>
-                  · {firingSequence.holes.length} trous
-                  · {firingSequence.connections?.length ?? 0} connexions
-                </div>
-              {/if}
+          <!-- Blast Pattern Canvas -->
+          <div style="padding: 12px 14px;">
+            <BlastPatternCanvas
+              firingSequence={firingSequence}
+              title={form.numero_tir || 'Séquence de tir'}
+              shotInfo="{form.chantier || ''}{form.chantier && form.date_tir ? ' · ' : ''}{form.date_tir || ''}"
+              interactive={true}
+              showAnimation={true}
+              showExport={true}
+            />
 
-              <!-- Delay groups visualization -->
-              {#if firingSequence.holes.length > 0}
-                <div style="margin-bottom: 12px;">
-                  <div style="font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                    Groupes de délais
-                  </div>
-                  {#each [...groupHolesByDelay(firingSequence.holes).entries()] as [delay, holeIds]}
-                    <div style="
-                      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
-                    ">
-                      <div style="
-                        width: 60px; text-align: right; font-size: 11px; font-weight: 600;
-                        color: #a78bfa; flex-shrink: 0;
-                      ">{formatDelay(delay)}</div>
-                      <div style="
-                        flex: 1; height: 16px; background: rgba(139,92,246,0.15);
-                        border-radius: 3px; position: relative; overflow: hidden;
-                      ">
-                        <div style="
-                          position: absolute; left: 0; top: 0; bottom: 0;
-                          width: {Math.min(100, (holeIds.length / Math.max(...[...groupHolesByDelay(firingSequence.holes).values()].map(a => a.length))) * 100)}%;
-                          background: rgba(139,92,246,0.5); border-radius: 3px;
-                        "></div>
-                      </div>
-                      <div style="
-                        width: 28px; text-align: right; font-size: 10px; color: var(--text3); flex-shrink: 0;
-                      ">{holeIds.length}</div>
-                    </div>
-                  {/each}
-                </div>
+            <!-- Model / extraction metadata -->
+            <div style="
+              margin-top: 8px; padding: 6px 10px; background: var(--card2);
+              border-radius: var(--radius-sm); font-size: 10px; color: var(--text3);
+              display: flex; gap: 8px; flex-wrap: wrap;
+            ">
+              <span>🤖 {firingSequence.model ?? 'Gemini'}</span>
+              {#if firingSequence.extractedAt}
+                <span>· {new Date(firingSequence.extractedAt).toLocaleString('fr-CA')}</span>
               {/if}
-
-              <!-- First holes table -->
-              <div style="font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                Trous (premiers 20)
-              </div>
-              <div style="
-                overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);
-                font-size: 11px;
-              ">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <thead>
-                    <tr style="background: var(--card2);">
-                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">#</th>
-                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">X</th>
-                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Y</th>
-                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Délai</th>
-                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each firingSequence.holes.slice(0, 20) as hole, i}
-                      <tr style="border-bottom: 1px solid var(--border); background: {i % 2 === 0 ? 'transparent' : 'var(--card2)'};">
-                        <td style="padding: 5px 8px; color: var(--text2); font-weight: 600;">{hole.id}</td>
-                        <td style="padding: 5px 8px; color: var(--text3);">{hole.x.toFixed(3)}</td>
-                        <td style="padding: 5px 8px; color: var(--text3);">{hole.y.toFixed(3)}</td>
-                        <td style="padding: 5px 8px; color: #a78bfa; font-weight: 600;">{formatDelay(hole.delay_ms)}</td>
-                        <td style="padding: 5px 8px; color: var(--text3);">
-                          {hole.type === 'bouchon' ? '○ bouchon' : hole.type === 'tampon' ? '◐ tampon' : '● masse'}
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-              {#if firingSequence.holes.length > 20}
-                <div style="font-size: 11px; color: var(--text3); margin-top: 6px; text-align: center;">
-                  ... et {firingSequence.holes.length - 20} autres trous
-                </div>
+              {#if firingSequence.connections?.length}
+                <span>· {firingSequence.connections.length} connexions</span>
               {/if}
-
-              <!-- Confidence + model info -->
-              <div style="
-                margin-top: 10px; padding: 8px 10px; background: var(--card2);
-                border-radius: var(--radius-sm); font-size: 10px; color: var(--text3);
-              ">
-                🤖 Extrait par {firingSequence.model ?? 'Gemini'} ·
-                Confiance {Math.round((firingSequence.confidence ?? 0) * 100)}% ·
-                {#if firingSequence.extractedAt}
-                  {new Date(firingSequence.extractedAt).toLocaleString('fr-CA')}
-                {/if}
-              </div>
             </div>
-          {/if}
+          </div>
         </div>
       {/if}
     </div>

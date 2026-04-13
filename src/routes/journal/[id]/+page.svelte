@@ -5,6 +5,7 @@
   import { getJournal, updateJournal, deleteJournal, type JournalTir } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
+  import BlastPatternCanvas from '$lib/components/BlastPatternCanvas.svelte';
 
   let journal = $state<JournalTir | null>(null);
   let loading = $state(true);
@@ -146,7 +147,12 @@
     }
   }
 
-  const sections = ['① Identification', '② Boutefeu', '③ Forage', '④ Explosifs', '⑤ Sécurité', '⑥ Résultats'];
+  const baseSections = ['① Identification', '② Boutefeu', '③ Forage', '④ Explosifs', '⑤ Sécurité', '⑥ Résultats'];
+  const sections = $derived(
+    journal?.firingSequence
+      ? [...baseSections, '💥 Séquence']
+      : baseSections
+  );
 </script>
 
 {#if loading}
@@ -521,6 +527,68 @@
     <button onclick={exportPDF} class="btn btn-primary btn-full" style="margin-top: 12px;" disabled={exporting}>
       {exporting ? '⏳ Génération PDF...' : '📄 Télécharger en PDF'}
     </button>
+    {/if}
+
+    <!-- SECTION 7: SÉQUENCE DE TIR (Vision AI) -->
+    {#if activeSection === 6 && journal.firingSequence}
+    <div class="card">
+      <div class="card-header" style="cursor: default;">
+        <div class="section-letter" style="background: #7c3aed;">💥</div>
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text);">Séquence de tir — Diagramme</h3>
+      </div>
+      <div class="card-body">
+        <!-- Stats summary -->
+        <div style="
+          display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+        ">
+          <span style="
+            font-size: 11px; font-weight: 600; padding: 3px 10px;
+            background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+            border-radius: 20px; color: #a78bfa;
+          ">{journal.firingSequence.holes.length} trous</span>
+          {#if journal.firingSequence.delayRange}
+            <span style="
+              font-size: 11px; font-weight: 600; padding: 3px 10px;
+              background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+              border-radius: 20px; color: #a78bfa;
+            ">{journal.firingSequence.delayRange.min}–{journal.firingSequence.delayRange.max} ms</span>
+          {/if}
+          {#if journal.firingSequence.confidence}
+            <span style="
+              font-size: 11px; font-weight: 600; padding: 3px 10px;
+              background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3);
+              border-radius: 20px; color: #2ecc71;
+            ">{Math.round(journal.firingSequence.confidence * 100)}% confiance</span>
+          {/if}
+          {#if journal.firingSequence.model}
+            <span style="
+              font-size: 11px; font-weight: 600; padding: 3px 10px;
+              background: rgba(107,114,153,0.15); border: 1px solid var(--border);
+              border-radius: 20px; color: var(--text3);
+            ">🤖 {journal.firingSequence.model}</span>
+          {/if}
+        </div>
+
+        <!-- Canvas -->
+        <BlastPatternCanvas
+          firingSequence={journal.firingSequence}
+          title={journal.numero_tir || 'Séquence de tir'}
+          shotInfo="{journal.chantier || ''}{journal.chantier && journal.date_tir ? ' · ' : ''}{journal.date_tir || ''}"
+          interactive={true}
+          showAnimation={true}
+          showExport={true}
+        />
+
+        <!-- Extraction metadata -->
+        {#if journal.firingSequence.extractedAt}
+          <div style="
+            margin-top: 8px; font-size: 10px; color: var(--text3); text-align: right;
+          ">
+            Extrait le {new Date(journal.firingSequence.extractedAt).toLocaleString('fr-CA')}
+          </div>
+        {/if}
+      </div>
+    </div>
     {/if}
 
   </div>
