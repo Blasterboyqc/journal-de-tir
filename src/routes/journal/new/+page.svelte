@@ -21,6 +21,18 @@
   let sigLastX = 0, sigLastY = 0;
   let pdfFileInput = $state<HTMLInputElement | null>(null);
 
+  // Freehand drawing canvas (patron de forage)
+  let drawCanvas = $state<HTMLCanvasElement | null>(null);
+  let drawCtx: CanvasRenderingContext2D | null = null;
+  let drawDrawing = false;
+  let drawLastX = 0, drawLastY = 0;
+  let drawColor = $state('#ffffff');
+  let drawLineWidth = $state(3);
+  let drawHistory = $state<ImageData[]>([]);
+
+  // Preview mode
+  let showPreview = $state(false);
+
   // Import summary state
   let importSummary = $state<{
     autoFilled: { field: string; label: string; value: string }[];
@@ -155,6 +167,9 @@
     // Section J — Signature
     signature_data: '',
     signature_date: new Date().toISOString().split('T')[0],
+
+    // Plan du patron de forage (dessin libre)
+    patron_forage_dataurl: '',
   });
 
   let explosifs = $state<ExplosifRow[]>([]);
@@ -197,7 +212,7 @@
       form.nom_entreprise = profil.employeur;
       form.chantier = profil.chantier_actuel;
     }
-    setTimeout(() => initSig(), 100);
+    setTimeout(() => { initSig(); initDraw(); }, 100);
   });
 
   // ─── Signature canvas ─────────────────────────────────────────────────────
@@ -256,6 +271,85 @@
     sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
     form.signature_data = '';
   }
+
+  // ─── Freehand Drawing Canvas (patron de forage) ────────────────────────────
+
+  function initDraw() {
+    if (!drawCanvas) return;
+    drawCtx = drawCanvas.getContext('2d');
+    if (!drawCtx) return;
+    // Dark background
+    drawCtx.fillStyle = '#1a1a2e';
+    drawCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+    drawCtx.strokeStyle = drawColor;
+    drawCtx.lineWidth = drawLineWidth;
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    // Restore existing drawing if any
+    if (form.patron_forage_dataurl) {
+      const img = new Image();
+      img.onload = () => { drawCtx?.drawImage(img, 0, 0); };
+      img.src = form.patron_forage_dataurl;
+    }
+  }
+
+  function startDrawFreehand(e: MouseEvent | TouchEvent) {
+    if (!drawCtx || !drawCanvas) return;
+    e.preventDefault();
+    drawDrawing = true;
+    // Save state for undo
+    const snapshot = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+    drawHistory = [...drawHistory, snapshot];
+    if (drawHistory.length > 30) drawHistory = drawHistory.slice(-30);
+    const pos = getPos(e, drawCanvas);
+    drawLastX = pos.x;
+    drawLastY = pos.y;
+    // Apply current color/width
+    drawCtx.strokeStyle = drawColor;
+    drawCtx.lineWidth = drawLineWidth;
+  }
+
+  function drawFreehand(e: MouseEvent | TouchEvent) {
+    if (!drawDrawing || !drawCtx || !drawCanvas) return;
+    e.preventDefault();
+    const pos = getPos(e, drawCanvas);
+    drawCtx.beginPath();
+    drawCtx.moveTo(drawLastX, drawLastY);
+    drawCtx.lineTo(pos.x, pos.y);
+    drawCtx.stroke();
+    drawLastX = pos.x;
+    drawLastY = pos.y;
+  }
+
+  function endDrawFreehand() {
+    drawDrawing = false;
+    if (drawCanvas) {
+      form.patron_forage_dataurl = drawCanvas.toDataURL('image/png');
+    }
+  }
+
+  function undoDraw() {
+    if (!drawCtx || !drawCanvas || drawHistory.length === 0) return;
+    const prev = drawHistory[drawHistory.length - 1];
+    drawHistory = drawHistory.slice(0, -1);
+    drawCtx.putImageData(prev, 0, 0);
+    form.patron_forage_dataurl = drawCanvas.toDataURL('image/png');
+  }
+
+  function clearDraw() {
+    if (!drawCtx || !drawCanvas) return;
+    drawCtx.fillStyle = '#1a1a2e';
+    drawCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+    drawHistory = [];
+    form.patron_forage_dataurl = '';
+  }
+
+  $effect(() => {
+    // Re-init draw when section 3 becomes active (canvas may have been rendered)
+    if (activeSection === 3 && !drawCtx) {
+      setTimeout(() => initDraw(), 50);
+    }
+  });
 
   // ─── Explosifs ────────────────────────────────────────────────────────────
 
@@ -1160,6 +1254,100 @@
           <input type="number" step="0.1" bind:value={form.dist_structure_souterraine} placeholder="distance en m">
         </div>
       </div>
+
+      <div class="divider"></div>
+
+      <!-- Plan du patron de forage (dessin libre) -->
+      <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+        Plan du patron de forage (dessiner ci-dessous)
+      </div>
+
+      <!-- Color + stroke toolbar -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+        <!-- Color picker -->
+        <div style="display: flex; gap: 5px; align-items: center;">
+          {#each [
+            { color: '#ffffff', label: 'Blanc' },
+            { color: '#ef4444', label: 'Rouge' },
+            { color: '#3b82f6', label: 'Bleu' },
+            { color: '#22c55e', label: 'Vert' },
+            { color: '#facc15', label: 'Jaune' },
+          ] as c}
+            <button
+              onclick={() => { drawColor = c.color; if (drawCtx) drawCtx.strokeStyle = c.color; }}
+              title={c.label}
+              style="
+                width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+                background: {c.color};
+                border: 3px solid {drawColor === c.color ? '#fff' : 'transparent'};
+                box-shadow: {drawColor === c.color ? '0 0 0 1px #4f6ef7' : 'none'};
+                padding: 0; flex-shrink: 0;
+              "
+            ></button>
+          {/each}
+        </div>
+        <!-- Stroke width -->
+        <div style="display: flex; gap: 4px; align-items: center; margin-left: 4px;">
+          {#each [
+            { w: 2, label: 'Fin' },
+            { w: 5, label: 'Moyen' },
+            { w: 10, label: 'Épais' },
+          ] as s}
+            <button
+              onclick={() => { drawLineWidth = s.w; if (drawCtx) drawCtx.lineWidth = s.w; }}
+              title={s.label}
+              style="
+                padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer;
+                font-family: inherit; font-weight: 600;
+                border: 1px solid {drawLineWidth === s.w ? 'var(--accent)' : 'var(--border)'};
+                background: {drawLineWidth === s.w ? 'var(--accent-glow)' : 'var(--card2)'};
+                color: {drawLineWidth === s.w ? 'var(--accent2)' : 'var(--text3)'};
+              "
+            >{s.label}</button>
+          {/each}
+        </div>
+        <!-- Undo + Clear -->
+        <div style="display: flex; gap: 4px; margin-left: auto;">
+          <button
+            onclick={undoDraw}
+            disabled={drawHistory.length === 0}
+            class="btn btn-secondary btn-sm"
+            title="Annuler le dernier trait"
+          >↩ Undo</button>
+          <button onclick={clearDraw} class="btn btn-secondary btn-sm">✕ Effacer</button>
+        </div>
+      </div>
+
+      <!-- Drawing canvas -->
+      <div style="
+        border: 2px solid var(--border); border-radius: var(--radius-sm);
+        background: #1a1a2e; overflow: hidden; position: relative;
+        touch-action: none;
+      ">
+        <canvas
+          bind:this={drawCanvas}
+          width="800"
+          height="450"
+          style="display: block; width: 100%; height: 300px; cursor: crosshair; touch-action: none;"
+          onmousedown={startDrawFreehand}
+          onmousemove={drawFreehand}
+          onmouseup={endDrawFreehand}
+          onmouseleave={endDrawFreehand}
+          ontouchstart={startDrawFreehand}
+          ontouchmove={drawFreehand}
+          ontouchend={endDrawFreehand}
+        ></canvas>
+        {#if !form.patron_forage_dataurl}
+          <div style="
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            pointer-events: none; color: rgba(255,255,255,0.2); font-size: 13px;
+            text-align: center; line-height: 1.6;
+          ">Dessinez le plan de forage ici<br>avec le doigt ou la souris</div>
+        {/if}
+      </div>
+      {#if form.patron_forage_dataurl}
+        <div style="font-size: 11px; color: var(--green); margin-top: 5px;">✅ Dessin enregistré</div>
+      {/if}
     </div>
   </div>
   {/if}
@@ -1884,11 +2072,18 @@
   </div>
 
   <!-- Save buttons -->
-  <div style="display: flex; gap: 10px; margin-top: 12px;">
-    <button onclick={saveAsDraft} class="btn btn-secondary" style="flex: 1;" disabled={saving}>
+  <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+    <button onclick={saveAsDraft} class="btn btn-secondary" style="flex: 1; min-width: 120px;" disabled={saving}>
       💾 Sauvegarder brouillon
     </button>
-    <button onclick={saveAsComplete} class="btn btn-success" style="flex: 1;" disabled={saving || !validationResult.valid}>
+    <button
+      onclick={() => showPreview = true}
+      class="btn btn-secondary"
+      style="flex: 1; min-width: 100px; border-color: rgba(139,92,246,0.5); color: #a78bfa; background: rgba(139,92,246,0.1);"
+    >
+      👁️ Aperçu
+    </button>
+    <button onclick={saveAsComplete} class="btn btn-success" style="flex: 1; min-width: 120px;" disabled={saving || !validationResult.valid}>
       ✅ Compléter et sauvegarder
     </button>
   </div>
@@ -1975,3 +2170,440 @@
   </div>
 
 </div>
+
+<!-- ── Preview Modal Overlay ──────────────────────────────────────────────── -->
+{#if showPreview}
+  {@const snap = $state.snapshot(form)}
+  {@const explosifsSnap = $state.snapshot(explosifs)}
+  {@const firingSnap = firingSequence ? $state.snapshot(firingSequence) : null}
+
+  <div
+    style="
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.85); overflow-y: auto;
+    "
+    onclick={(e) => { if (e.target === e.currentTarget) showPreview = false; }}
+  >
+    <!-- Toolbar (no-print) -->
+    <div class="preview-no-print" style="
+      position: sticky; top: 0; z-index: 10;
+      background: #1a1a2e; border-bottom: 1px solid #333;
+      padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    ">
+      <button
+        onclick={() => showPreview = false}
+        style="
+          padding: 8px 14px; border-radius: 8px; cursor: pointer;
+          background: transparent; border: 1px solid #555;
+          color: #aaa; font-size: 13px; font-family: inherit;
+        "
+      >← Retour au formulaire</button>
+      <div style="flex: 1; font-size: 14px; font-weight: 600; color: #eee;">
+        👁️ Aperçu — {snap.numero_tir}
+      </div>
+      <button
+        onclick={() => window.print()}
+        style="
+          padding: 8px 16px; border-radius: 8px; cursor: pointer;
+          background: #4f6ef7; border: none; color: white;
+          font-size: 13px; font-weight: 600; font-family: inherit;
+        "
+      >🖨️ Imprimer / PDF</button>
+    </div>
+
+    <!-- Print content -->
+    <div class="preview-print-page" style="
+      max-width: 700px; margin: 20px auto; padding: 20px 24px 30px;
+      background: white; color: #111;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 10pt; line-height: 1.4;
+    ">
+
+      <!-- Title -->
+      <div style="text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 8px;">
+        <div style="font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">
+          Journal de tir par sautage
+        </div>
+        <div style="font-size: 8pt; color: #333; margin-top: 4px;">
+          Référence : Annexe 2.2 Journal de tir (art. 4.7.10) — Code de sécurité pour les travaux de construction
+        </div>
+        <div style="font-size: 8pt; color: #555; margin-top: 2px;">
+          ASP Construction — CA04-2025-02 · Numéro de tir : <strong>{snap.numero_tir || '—'}</strong>
+        </div>
+      </div>
+
+      <!-- Section A — Identification -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            A — IDENTIFICATION DU CHANTIER
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; width: 28%; border: 1px solid #ccc;">Nom de l'entreprise :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.nom_entreprise || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Adresse :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.adresse_entreprise || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Localisation du chantier :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.chantier || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Donneur d'ouvrage :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.donneur_ouvrage || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section B + C -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left; width: 50%;">
+              B — INFORMATION SUR LE SAUTAGE
+            </th>
+            <th colspan="2" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left; width: 50%;">
+              C — CONDITIONS CLIMATIQUES
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Localisation / chaînage :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 28%;">{snap.station || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Température :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 28%;">{snap.temperature ? snap.temperature + ' °C' : '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Date (j/m/a) :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.date_tir || '—'}</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;" colspan="2">
+              {snap.meteo_ensoleille ? '☑' : '☐'} Ensoleillé &nbsp;
+              {snap.meteo_nuageux ? '☑' : '☐'} Nuageux &nbsp;
+              {snap.meteo_pluie ? '☑' : '☐'} Pluie &nbsp;
+              {snap.meteo_neige ? '☑' : '☐'} Neige
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Heure :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.heure_tir || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Dir. et vitesse vents :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.vent_direction_vitesse || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nb volées quotidiennes :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.nb_volees_quotidiennes || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Conditions du roc :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.conditions_roc || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section D — Forage -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            D — DONNÉES SUR LE FORAGE
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 30%;">Nb trous et diamètre :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 20%;">{snap.nb_trous || '—'} trous, {snap.diametre || '—'} mm</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 25%;">Fardeau × Espacement :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.fardeau || '—'} m × {snap.espacement || '—'} m</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Prof. moy. par rangée :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.profondeur_prevue || '—'} m</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Hauteur du collet :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.hauteur_collet || '—'} m</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nature de la bourre :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">
+              {snap.nature_bourre === 'pierre nette' ? '☑' : '☐'} pierre nette &nbsp;
+              {snap.nature_bourre === 'concassée' ? '☑' : '☐'} concassée
+            </td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Hauteur mort terrain :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.hauteur_mort_terrain || '—'} m</td>
+          </tr>
+          <tr>
+            <td colspan="4" style="padding: 3px 6px; border: 1px solid #ccc; font-size: 9pt;">
+              <strong>Vibrations :</strong>
+              ● Valeur à respecter : {snap.vibrations_valeur_respecter || '—'} &nbsp;
+              ● Valeur obtenue : {snap.vibrations_ppv || '—'} &nbsp;
+              ● Sismographes : {snap.vibrations_sismographes || '—'}
+            </td>
+          </tr>
+          {#if snap.nb_trous_predecoupage}
+            <tr>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nb trous pré-découpage :</td>
+              <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.nb_trous_predecoupage}</td>
+            </tr>
+          {/if}
+          {#if snap.type_pare_eclats}
+            <tr>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Type pare-éclats :</td>
+              <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.type_pare_eclats}</td>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Dim. / Nb :</td>
+              <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.pare_eclats_dimension || '—'} / {snap.pare_eclats_nombre || '—'}</td>
+            </tr>
+          {/if}
+        </tbody>
+      </table>
+
+      <!-- Plan du patron de forage (dessin libre) -->
+      {#if snap.patron_forage_dataurl}
+        <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">
+          <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; background: #222; color: white; padding: 4px 6px; margin: -8px -8px 8px -8px;">
+            PLAN DU PATRON DE FORAGE
+          </div>
+          <img
+            src={snap.patron_forage_dataurl}
+            alt="Plan du patron de forage"
+            style="width: 100%; display: block; border-radius: 4px;"
+          />
+        </div>
+      {/if}
+
+      <!-- Section E — Distances -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="6" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            E — DISTANCE DES STRUCTURES LES PLUS PRÈS (en mètre)
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Bâtiment :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.dist_batiment || '—'} m</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Pont :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.dist_pont || '—'} m</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Route :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.dist_route || '—'} m</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Ligne électrique :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.dist_ligne_electrique || '—'} m</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Structure s-terrain :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.dist_structure_souterraine || '—'} m</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section F — Explosifs -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            F — EXPLOSIFS (réf. : Colonne de charge)
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Type :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{snap.type_detonateurs || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 25%;">Nb détonateurs :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.nb_detonateurs || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Quantité utilisée :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">
+              {snap.total_explosif_kg ? snap.total_explosif_kg + ' kg total' : '—'}
+              {explosifsSnap && explosifsSnap.length > 0
+                ? ' — ' + explosifsSnap.map((e: any) => `${e.type || '?'} (${e.total_kg || '?'} kg)`).join(', ')
+                : ''}
+            </td>
+          </tr>
+          {#if snap.type_emulsion_pompee}
+            <tr>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Type émulsion pompée :</td>
+              <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.type_emulsion_pompee}</td>
+            </tr>
+          {/if}
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Volume de roc :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.volume_roc_m3 || '—'} m³</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Facteur chargement :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.facteur_chargement || '—'} kg/m³</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section G — Recommandations -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="6" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            G — RECOMMANDATIONS (BONNES PRATIQUES)
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 24%;">Caméra vidéo :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 18%;">{snap.camera_video === 'Oui' ? '☑ Oui  ☐ Non' : snap.camera_video === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 24%;">Écaillage sécurité :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.ecaillage_securite === 'Oui' ? '☑ Oui  ☐ Non' : snap.ecaillage_securite === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+          </tr>
+          <tr>
+            <td colspan="4" style="padding: 3px 6px; border: 1px solid #ccc;">
+              <strong>Détecteur résidentiel de CO (norme BNQ) :</strong> &nbsp;
+              {snap.detecteur_co_bnq === 'Oui' ? '☑ Oui  ☐ Non' : snap.detecteur_co_bnq === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section H — Résultats -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            H — RÉSULTAT DU SAUTAGE
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Concentration max. CO :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{snap.concentration_co_ppm || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 26%;">Fracturation telle qu'exigée :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.fracturation_exigee === 'Oui' ? '☑ Oui  ☐ Non' : snap.fracturation_exigee === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Bris hors profil :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.bris_hors_profil === 'Oui' ? '☑ Oui  ☐ Non' : snap.bris_hors_profil === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Trous ratés / canon / fond :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{(snap.trous_rates === 'Oui' || snap.trous_rates === 'oui') ? '☑ Oui  ☐ Non' : (snap.trous_rates === 'Non' || snap.trous_rates === 'non') ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Projection :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.projection === 'Oui' ? '☑ Oui  ☐ Non' : snap.projection === 'Non' ? '☐ Oui  ☑ Non' : '☐ Oui  ☐ Non'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Heure mise à feu :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.heure_mise_a_feu || '—'}</td>
+          </tr>
+          {#if snap.projection === 'Oui'}
+            <tr>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; padding-left: 18px;">● Distance et pierres :</td>
+              <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.projection_distance_pierres || '—'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; padding-left: 18px;">● Description dommages :</td>
+              <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{snap.description_dommages || '—'}</td>
+            </tr>
+          {/if}
+        </tbody>
+      </table>
+
+      <!-- Blast Pattern Canvas (Vision AI) -->
+      {#if firingSnap && firingSnap.holes && firingSnap.holes.length > 0}
+        <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">
+          <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; background: #222; color: white; padding: 4px 6px; margin: -8px -8px 8px -8px;">
+            PLAN DE TIR / SÉQUENCE DE DÉTONATION (Vision AI)
+          </div>
+          <BlastPatternCanvas
+            firingSequence={firingSnap}
+            title={snap.numero_tir || ''}
+            shotInfo="{snap.chantier || ''}{snap.chantier && snap.date_tir ? ' · ' : ''}{snap.date_tir || ''}"
+            interactive={false}
+            showAnimation={false}
+            showExport={false}
+          />
+          <div style="font-size: 8pt; color: #555; margin-top: 4px; text-align: right;">
+            {firingSnap.holes.length} trous · Extrait via Vision AI ({firingSnap.model ?? 'Gemini'})
+          </div>
+        </div>
+      {/if}
+
+      <!-- Section I — Remarques -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="1" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            I — REMARQUES
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 4px 6px; border: 1px solid #ccc; min-height: 40px; vertical-align: top; white-space: pre-wrap; font-size: 9pt;">
+              {snap.remarques || ''}{#if !snap.remarques}<br><br>{/if}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Section J — Signature -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
+        <thead>
+          <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
+            J — SIGNATURE
+          </th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Nom du boutefeu :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{snap.boutefeu_prenom || ''} {snap.boutefeu_nom || ''}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Date :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.signature_date || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Signature :</td>
+            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc; height: 60px; vertical-align: middle; text-align: center;">
+              {#if snap.signature_data}
+                <img
+                  src={snap.signature_data}
+                  alt="Signature"
+                  style="max-height: 50px; max-width: 200px; object-fit: contain;"
+                />
+              {:else}
+                <span style="color: #999; font-style: italic;">Signature manquante</span>
+              {/if}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Certificat CSTC :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.boutefeu_certificat || '—'}</td>
+            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Permis SQ :</td>
+            <td style="padding: 3px 6px; border: 1px solid #ccc;">{snap.boutefeu_permis_sq || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Legal note -->
+      <div style="
+        margin-top: 8px; padding: 6px 10px;
+        border: 1px solid #999; font-size: 8pt; color: #555;
+        line-height: 1.4;
+      ">
+        <strong>Note légale :</strong> L'employeur doit conserver le journal de tir pendant une durée de <strong>3 ans</strong>
+        et le rendre disponible en tout temps sur le lieu de travail.
+        &nbsp;&nbsp;
+        <em>Originale — Faire une copie pour conserver dans les dossiers de l'entreprise.</em>
+      </div>
+
+    </div>
+  </div>
+{/if}
+
+<svelte:head>
+  <style>
+    @media print {
+      /* When printing from preview modal, hide everything except the print page */
+      body > * { display: none !important; }
+      .preview-print-page {
+        display: block !important;
+        position: fixed !important;
+        inset: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        padding: 15mm 12mm !important;
+        z-index: 99999 !important;
+      }
+      .preview-no-print { display: none !important; }
+    }
+    @page {
+      size: letter portrait;
+      margin: 15mm 12mm;
+    }
+  </style>
+</svelte:head>

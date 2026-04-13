@@ -353,6 +353,20 @@
       </tbody>
     </table>
 
+    <!-- ── Plan du patron de forage (dessin libre) ───────────────────────── -->
+    {#if journal.patron_forage_dataurl}
+      <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">
+        <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; background: #222; color: white; padding: 4px 6px; margin: -8px -8px 8px -8px;">
+          PLAN DU PATRON DE FORAGE
+        </div>
+        <img
+          src={journal.patron_forage_dataurl}
+          alt="Plan du patron de forage"
+          style="width: 100%; display: block; border-radius: 4px;"
+        />
+      </div>
+    {/if}
+
     <!-- ── Blast Pattern Canvas (if available) ────────────────────────────── -->
     {#if journal.firingSequence && journal.firingSequence.holes.length > 0}
       <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">

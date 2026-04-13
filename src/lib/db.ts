@@ -133,6 +133,9 @@ export interface JournalTir {
   signature_data: string;
   signature_date: string;
 
+  // ── Plan du patron de forage (dessin libre) ───────────────────────────────
+  patron_forage_dataurl?: string;
+
   // ── Vision AI — Firing Sequence (Phase 2) ─────────────────────────────────
   firingSequence?: FiringSequence;
 
@@ -199,6 +202,11 @@ class JournalDB extends Dexie {
     });
     // Version 3: adds full ASP form fields (sections A-J)
     this.version(3).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    // Version 4: adds patron_forage_dataurl (freehand drawing canvas)
+    this.version(4).stores({
       profil: '++id',
       journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
     });
