@@ -4,12 +4,15 @@
   import { goto } from '$app/navigation';
   import { getJournal, updateJournal, deleteJournal, type JournalTir } from '$lib/db';
   import { showToast } from '$lib/stores/app';
+  import { parseBlastPlanPDF } from '$lib/pdf-parser';
 
   let journal = $state<JournalTir | null>(null);
   let loading = $state(true);
   let exporting = $state(false);
   let deleting = $state(false);
+  let importing = $state(false);
   let activeSection = $state(0);
+  let pdfFileInput: HTMLInputElement;
 
   const id = $derived(parseInt($page.params.id));
 
@@ -77,6 +80,72 @@
     return value;
   }
 
+  async function importFromPDF(event: Event) {
+    if (!journal) return;
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    importing = true;
+    try {
+      const result = await parseBlastPlanPDF(file);
+      const data = result.journalData;
+
+      // Build update payload — only overwrite fields that were extracted
+      const updates: Partial<JournalTir> = {};
+
+      if (data.numero_tir) updates.numero_tir = data.numero_tir;
+      if (data.date_tir) updates.date_tir = data.date_tir;
+      if (data.station) updates.station = data.station;
+      if (data.chantier) updates.chantier = data.chantier;
+      if (data.contrat) updates.contrat = data.contrat;
+      if (data.type_tir) updates.type_tir = data.type_tir;
+      if (data.nb_trous) updates.nb_trous = data.nb_trous;
+      if (data.profondeur_prevue) updates.profondeur_prevue = data.profondeur_prevue;
+      if (data.diametre) updates.diametre = data.diametre;
+      if (data.espacement) updates.espacement = data.espacement;
+      if (data.fardeau) updates.fardeau = data.fardeau;
+      if (data.sous_forage) updates.sous_forage = data.sous_forage;
+      if (data.inclinaison) updates.inclinaison = data.inclinaison;
+      if (data.detonateurs) updates.detonateurs = data.detonateurs;
+      if (data.type_detonateurs) updates.type_detonateurs = data.type_detonateurs;
+      if (data.nb_detonateurs) updates.nb_detonateurs = data.nb_detonateurs;
+      if (data.sequence_delais) updates.sequence_delais = data.sequence_delais;
+      if (data.superviseur && !journal.superviseur) updates.superviseur = data.superviseur;
+      if (data.total_explosif_kg) updates.total_explosif_kg = data.total_explosif_kg;
+      if (data.vibrations_ppv) updates.vibrations_ppv = data.vibrations_ppv;
+      if (data.remarques) {
+        updates.remarques = journal.remarques
+          ? journal.remarques + '\n\n' + data.remarques
+          : data.remarques;
+      }
+      if (data.explosifs && data.explosifs.length > 0) {
+        updates.explosifs = data.explosifs;
+      }
+
+      // Save to DB
+      await updateJournal(id, updates);
+
+      // Update local state
+      Object.assign(journal, updates);
+
+      const count = result.fieldsExtracted;
+      const typeLabel = result.documentType === 'bench' ? 'banquette'
+        : result.documentType === 'tunnel_advance' ? 'foncée' : 'inconnu';
+      showToast(`📋 ${count} champs mis à jour (plan de ${typeLabel})`, 'success');
+
+      if (result.warnings && result.warnings.length > 0) {
+        setTimeout(() => showToast(`⚠️ ${result.warnings[0]}`, 'info'), 4000);
+      }
+    } catch (err) {
+      console.error('PDF import error:', err);
+      showToast('❌ Erreur lors de l\'analyse du PDF', 'error');
+    } finally {
+      importing = false;
+      if (pdfFileInput) pdfFileInput.value = '';
+    }
+  }
+
   const sections = ['① Identification', '② Boutefeu', '③ Forage', '④ Explosifs', '⑤ Sécurité', '⑥ Résultats'];
 </script>
 
@@ -84,6 +153,15 @@
   <div style="padding: 40px; text-align: center; color: var(--text3);">Chargement...</div>
 {:else if journal}
   <div style="padding: 12px 12px 0;">
+
+  <!-- Hidden PDF file input -->
+  <input
+    bind:this={pdfFileInput}
+    type="file"
+    accept=".pdf,application/pdf"
+    style="display: none;"
+    onchange={importFromPDF}
+  />
 
     <!-- Header -->
     <div style="
@@ -108,6 +186,15 @@
       <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
         <button onclick={exportPDF} class="btn btn-primary btn-sm" disabled={exporting}>
           {exporting ? '⏳ Export...' : '📄 Export PDF'}
+        </button>
+        <button
+          onclick={() => pdfFileInput?.click()}
+          class="btn btn-secondary btn-sm"
+          disabled={importing}
+          style="background: var(--accent-glow); border-color: var(--accent); color: var(--accent2);"
+          title="Importer un plan de tir PDF pour mettre à jour les champs"
+        >
+          {importing ? '⏳ Analyse...' : '📄 Importer PDF'}
         </button>
         <button onclick={() => goto(`/journal/new?edit=${journal?.id}`)} class="btn btn-secondary btn-sm">
           ✏️ Modifier

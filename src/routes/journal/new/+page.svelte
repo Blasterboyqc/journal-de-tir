@@ -3,14 +3,17 @@
   import { goto } from '$app/navigation';
   import { saveJournal, getProfil, genNumeroTir, type ExplosifRow, type GardienRow } from '$lib/db';
   import { showToast } from '$lib/stores/app';
+  import { parseBlastPlanPDF } from '$lib/pdf-parser';
 
   // Form state
   let saving = $state(false);
+  let importing = $state(false);
   let activeSection = $state(0);
   let sigCanvas: HTMLCanvasElement;
   let sigCtx: CanvasRenderingContext2D | null = null;
   let sigDrawing = false;
   let sigLastX = 0, sigLastY = 0;
+  let pdfFileInput: HTMLInputElement;
 
   // Form data
   let form = $state({
@@ -239,6 +242,74 @@
     }
   }
 
+  async function importFromPDF(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    importing = true;
+    try {
+      const result = await parseBlastPlanPDF(file);
+      const data = result.journalData;
+
+      // Apply parsed fields to the form (only overwrite empty fields, except for key fields)
+      if (data.numero_tir) form.numero_tir = data.numero_tir;
+      if (data.date_tir) form.date_tir = data.date_tir;
+      if (data.station) form.station = data.station;
+      if (data.chantier) form.chantier = data.chantier;
+      if (data.contrat) form.contrat = data.contrat;
+      if (data.type_tir) form.type_tir = data.type_tir;
+      if (data.nb_trous) form.nb_trous = data.nb_trous;
+      if (data.profondeur_prevue) form.profondeur_prevue = data.profondeur_prevue;
+      if (data.diametre) form.diametre = data.diametre;
+      if (data.espacement) form.espacement = data.espacement;
+      if (data.fardeau) form.fardeau = data.fardeau;
+      if (data.sous_forage) form.sous_forage = data.sous_forage;
+      if (data.inclinaison) form.inclinaison = data.inclinaison;
+      if (data.detonateurs) form.detonateurs = data.detonateurs;
+      if (data.type_detonateurs) form.type_detonateurs = data.type_detonateurs;
+      if (data.nb_detonateurs) form.nb_detonateurs = data.nb_detonateurs;
+      if (data.sequence_delais) form.sequence_delais = data.sequence_delais;
+      if (data.superviseur && !form.superviseur) form.superviseur = data.superviseur;
+      if (data.total_explosif_kg) form.total_explosif_kg = data.total_explosif_kg;
+      if (data.vibrations_ppv) form.vibrations_ppv = data.vibrations_ppv;
+      if (data.remarques) {
+        form.remarques = form.remarques
+          ? form.remarques + '\n\n' + data.remarques
+          : data.remarques;
+      }
+
+      // Apply explosifs array
+      if (data.explosifs && data.explosifs.length > 0) {
+        explosifs = data.explosifs.map(e => ({ ...e, id: Date.now().toString() + Math.random() }));
+        recalcTotal();
+      }
+
+      // Show success toast
+      const count = result.fieldsExtracted;
+      const typeLabel = result.documentType === 'bench' ? 'banquette'
+        : result.documentType === 'tunnel_advance' ? 'foncée' : 'inconnu';
+      showToast(`📋 ${count} champs remplis automatiquement (plan de ${typeLabel})`, 'success');
+
+      // Show warnings if any
+      if (result.warnings && result.warnings.length > 0) {
+        setTimeout(() => {
+          showToast(`⚠️ ${result.warnings[0]}`, 'info');
+        }, 4000);
+      }
+
+      // Navigate to the identification section so user can review
+      activeSection = 0;
+    } catch (err) {
+      console.error('PDF import error:', err);
+      showToast('❌ Erreur lors de l\'analyse du PDF', 'error');
+    } finally {
+      importing = false;
+      // Reset file input so same file can be re-imported
+      if (pdfFileInput) pdfFileInput.value = '';
+    }
+  }
+
   const sections = [
     '① Identification',
     '② Boutefeu',
@@ -253,6 +324,15 @@
 
 <div style="padding: 12px 12px 0;">
 
+  <!-- Hidden PDF file input -->
+  <input
+    bind:this={pdfFileInput}
+    type="file"
+    accept=".pdf,application/pdf"
+    style="display: none;"
+    onchange={importFromPDF}
+  />
+
   <!-- Header -->
   <div style="
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -263,6 +343,15 @@
       <div style="font-size: 11px; color: var(--text3);">{form.numero_tir}</div>
     </div>
     <div style="display: flex; gap: 6px;">
+      <button
+        onclick={() => pdfFileInput?.click()}
+        class="btn btn-secondary btn-sm"
+        disabled={importing}
+        style="background: var(--accent-glow); border-color: var(--accent); color: var(--accent2);"
+        title="Importer un plan de tir PDF pour remplir automatiquement le formulaire"
+      >
+        {importing ? '⏳ Analyse...' : '📄 Importer PDF'}
+      </button>
       <button onclick={saveAsDraft} class="btn btn-secondary btn-sm" disabled={saving}>
         💾 Brouillon
       </button>
