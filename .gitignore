@@ -4,6 +4,7 @@ node_modules/
 # SvelteKit build
 .svelte-kit/
 build/
+# docs/ est suivi par git pour GitHub Pages
 
 # Environment
 .env

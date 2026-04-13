@@ -8,11 +8,16 @@ const config = {
 	},
 	kit: {
 		adapter: adapter({
-			// Vercel / static hosting: single-page app fallback
+			// GitHub Pages: déploiement depuis le dossier docs/
+			pages: 'docs',
+			assets: 'docs',
 			fallback: 'index.html',
 			precompress: false,
 			strict: false,
-		})
+		}),
+		paths: {
+			base: '/journal-de-tir'
+		}
 	}
 };
 
