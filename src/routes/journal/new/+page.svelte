@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { saveJournal, getProfil, genNumeroTir, type ExplosifRow, type GardienRow } from '$lib/db';
+  import { saveJournal, getProfil, genNumeroTir, type ExplosifRow, type GardienRow, type FiringSequence } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
+  import { extractFiringSequence, summarizeFiringSequence, groupHolesByDelay, formatDelay, pdfHasFiringSequencePage } from '$lib/vision-extract';
 
   // Form state
   let saving = $state(false);
   let importing = $state(false);
+  let visionExtracting = $state(false);
   let activeSection = $state(0);
   let sigCanvas: HTMLCanvasElement;
   let sigCtx: CanvasRenderingContext2D | null = null;
@@ -86,6 +88,11 @@
 
   let explosifs = $state<ExplosifRow[]>([]);
   let gardiens = $state<GardienRow[]>([]);
+
+  // Vision AI — Firing Sequence (Phase 2)
+  let firingSequence = $state<FiringSequence | null>(null);
+  let visionPdfFile = $state<File | null>(null);    // The last imported PDF (for Vision AI)
+  let visionShowPreview = $state(false);            // Whether to show the extracted holes preview
 
   onMount(async () => {
     const profil = await getProfil();
@@ -229,6 +236,7 @@
         statut,
         explosifs,
         gardiens,
+        firingSequence: firingSequence ?? undefined,
         createdAt: now,
         updatedAt: now,
       });
@@ -246,6 +254,11 @@
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
+
+    // Store the file for Vision AI use (pdfHasFiringSequencePage check is done in the UI)
+    visionPdfFile = file;
+    firingSequence = null;  // Reset any previous extraction when a new PDF is loaded
+    visionShowPreview = false;
 
     importing = true;
     try {
@@ -310,6 +323,54 @@
     }
   }
 
+  // ─── Vision AI Extraction ──────────────────────────────────────────────────
+
+  async function runVisionExtract() {
+    if (!visionPdfFile) {
+      showToast('⚠️ Importez d\'abord un plan de tir PDF', 'info');
+      return;
+    }
+    if (visionExtracting) return;
+
+    visionExtracting = true;
+    try {
+      showToast('🤖 Analyse Vision AI en cours... (peut prendre 15-30 sec)', 'info');
+
+      // Build shot info hints from parsed form data
+      const shotInfo = {
+        tirNumber: form.numero_tir ? parseInt(form.numero_tir.replace(/\D/g, '').slice(-4)) || undefined : undefined,
+        totalHoles: form.nb_trous ? parseInt(form.nb_trous) || undefined : undefined,
+      };
+
+      const result = await extractFiringSequence(
+        visionPdfFile,
+        shotInfo
+      );
+
+      firingSequence = result.firingSequence;
+      visionShowPreview = true;
+
+      const confidence = Math.round((result.firingSequence.confidence ?? 0) * 100);
+      const holeCount = result.firingSequence.holes.length;
+      showToast(`🎯 Séquence extraite: ${holeCount} trous détectés (confiance ${confidence}%)`, 'success');
+
+    } catch (err: unknown) {
+      console.error('Vision extraction error:', err);
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      if (msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('Failed to fetch')) {
+        showToast('❌ API Vision inaccessible. Vérifiez l\'URL ou déployez l\'API.', 'error');
+      } else if (msg.includes('GEMINI_API_KEY') || msg.includes('API key')) {
+        showToast('❌ Clé API Gemini manquante. Configurez GEMINI_API_KEY sur le serveur.', 'error');
+      } else if (msg.includes('quota') || msg.includes('429')) {
+        showToast('⏳ Quota Gemini dépassé. Attendez une minute et réessayez.', 'error');
+      } else {
+        showToast(`❌ Erreur Vision AI: ${msg.substring(0, 80)}`, 'error');
+      }
+    } finally {
+      visionExtracting = false;
+    }
+  }
+
   const sections = [
     '① Identification',
     '② Boutefeu',
@@ -342,7 +403,7 @@
       <div style="font-size: 16px; font-weight: 800; color: var(--text);">✏️ Nouveau journal de tir</div>
       <div style="font-size: 11px; color: var(--text3);">{form.numero_tir}</div>
     </div>
-    <div style="display: flex; gap: 6px;">
+    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
       <button
         onclick={() => pdfFileInput?.click()}
         class="btn btn-secondary btn-sm"
@@ -352,6 +413,17 @@
       >
         {importing ? '⏳ Analyse...' : '📄 Importer PDF'}
       </button>
+      {#if visionPdfFile}
+        <button
+          onclick={runVisionExtract}
+          class="btn btn-secondary btn-sm"
+          disabled={visionExtracting}
+          style="background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.4); color: #a78bfa;"
+          title="Extraire la séquence de tir (trous, délais) depuis la page C du PDF via Vision AI"
+        >
+          {visionExtracting ? '🤖 Vision AI...' : firingSequence ? '✅ Séquence extraite' : '🔍 Séquence de tir'}
+        </button>
+      {/if}
       <button onclick={saveAsDraft} class="btn btn-secondary btn-sm" disabled={saving}>
         💾 Brouillon
       </button>
@@ -741,6 +813,189 @@
           <textarea bind:value={form.sequence_delais} placeholder="ex: Rangée 1 (0ms) → Rangée 2 (17ms) → Rangée 3 (42ms)..."></textarea>
         </div>
       </div>
+
+      <!-- ──── Vision AI — Firing Sequence Extraction ──── -->
+      <div class="divider"></div>
+      <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+        Séquence de tir — Vision AI (Page C)
+      </div>
+
+      {#if !visionPdfFile}
+        <!-- No PDF imported yet -->
+        <div style="
+          padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+          background: var(--card2); text-align: center; color: var(--text3); font-size: 12px;
+        ">
+          📄 Importez d'abord un plan de tir PDF pour activer l'extraction Vision AI
+        </div>
+      {:else if !firingSequence}
+        <!-- PDF imported, ready to extract -->
+        <div style="
+          padding: 14px; border: 1px dashed rgba(139,92,246,0.3); border-radius: var(--radius-sm);
+          background: rgba(139,92,246,0.05);
+        ">
+          <div style="font-size: 13px; color: var(--text2); margin-bottom: 10px;">
+            🤖 Extrayez automatiquement les positions et délais de chaque trou depuis le diagramme de séquence (page C du plan de tir).
+          </div>
+          <div style="font-size: 11px; color: var(--text3); margin-bottom: 10px; line-height: 1.5;">
+            Utilise Google Gemini Flash (Vision AI) pour lire le diagramme raster et identifier les trous, délais (ms) et connexions.
+          </div>
+          <button
+            onclick={runVisionExtract}
+            disabled={visionExtracting}
+            style="
+              width: 100%; padding: 10px 16px; border-radius: var(--radius-sm);
+              background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.4);
+              color: #a78bfa; font-size: 13px; font-weight: 600; cursor: pointer;
+              font-family: inherit; transition: all .15s;
+              opacity: {visionExtracting ? 0.7 : 1};
+            "
+          >
+            {visionExtracting ? '🤖 Analyse Vision AI en cours...' : '🔍 Extraire séquence de tir (Vision AI)'}
+          </button>
+        </div>
+      {:else}
+        <!-- Extraction complete — show results -->
+        <div style="
+          border: 1px solid rgba(139,92,246,0.3); border-radius: var(--radius-sm);
+          background: rgba(139,92,246,0.05); overflow: hidden;
+        ">
+          <!-- Summary bar -->
+          <div style="
+            padding: 10px 14px; background: rgba(139,92,246,0.1);
+            border-bottom: 1px solid rgba(139,92,246,0.2);
+            display: flex; align-items: center; gap: 8px; justify-content: space-between;
+          ">
+            <div>
+              <span style="font-size: 13px; font-weight: 700; color: #a78bfa;">✅ Séquence extraite</span>
+              <span style="font-size: 11px; color: var(--text3); margin-left: 8px;">
+                {summarizeFiringSequence(firingSequence)}
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button
+                onclick={() => { visionShowPreview = !visionShowPreview; }}
+                style="
+                  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+                  background: transparent; border: 1px solid rgba(139,92,246,0.4);
+                  color: #a78bfa; cursor: pointer; font-family: inherit;
+                "
+              >
+                {visionShowPreview ? '▲ Masquer' : '▼ Détails'}
+              </button>
+              <button
+                onclick={runVisionExtract}
+                disabled={visionExtracting}
+                style="
+                  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+                  background: transparent; border: 1px solid var(--border);
+                  color: var(--text3); cursor: pointer; font-family: inherit;
+                "
+              >
+                🔄 Ré-extraire
+              </button>
+            </div>
+          </div>
+
+          {#if visionShowPreview}
+            <div style="padding: 12px 14px;">
+              <!-- Delay groups summary -->
+              {#if firingSequence.delayRange}
+                <div style="margin-bottom: 10px; font-size: 11px; color: var(--text3);">
+                  Plage de délais: <strong style="color: var(--text2);">
+                    {firingSequence.delayRange.min} ms – {firingSequence.delayRange.max} ms
+                  </strong>
+                  · {firingSequence.holes.length} trous
+                  · {firingSequence.connections?.length ?? 0} connexions
+                </div>
+              {/if}
+
+              <!-- Delay groups visualization -->
+              {#if firingSequence.holes.length > 0}
+                <div style="margin-bottom: 12px;">
+                  <div style="font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                    Groupes de délais
+                  </div>
+                  {#each [...groupHolesByDelay(firingSequence.holes).entries()] as [delay, holeIds]}
+                    <div style="
+                      display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+                    ">
+                      <div style="
+                        width: 60px; text-align: right; font-size: 11px; font-weight: 600;
+                        color: #a78bfa; flex-shrink: 0;
+                      ">{formatDelay(delay)}</div>
+                      <div style="
+                        flex: 1; height: 16px; background: rgba(139,92,246,0.15);
+                        border-radius: 3px; position: relative; overflow: hidden;
+                      ">
+                        <div style="
+                          position: absolute; left: 0; top: 0; bottom: 0;
+                          width: {Math.min(100, (holeIds.length / Math.max(...[...groupHolesByDelay(firingSequence.holes).values()].map(a => a.length))) * 100)}%;
+                          background: rgba(139,92,246,0.5); border-radius: 3px;
+                        "></div>
+                      </div>
+                      <div style="
+                        width: 28px; text-align: right; font-size: 10px; color: var(--text3); flex-shrink: 0;
+                      ">{holeIds.length}</div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
+              <!-- First holes table -->
+              <div style="font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                Trous (premiers 20)
+              </div>
+              <div style="
+                overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm);
+                font-size: 11px;
+              ">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="background: var(--card2);">
+                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">#</th>
+                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">X</th>
+                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Y</th>
+                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Délai</th>
+                      <th style="padding: 6px 8px; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border);">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each firingSequence.holes.slice(0, 20) as hole, i}
+                      <tr style="border-bottom: 1px solid var(--border); background: {i % 2 === 0 ? 'transparent' : 'var(--card2)'};">
+                        <td style="padding: 5px 8px; color: var(--text2); font-weight: 600;">{hole.id}</td>
+                        <td style="padding: 5px 8px; color: var(--text3);">{hole.x.toFixed(3)}</td>
+                        <td style="padding: 5px 8px; color: var(--text3);">{hole.y.toFixed(3)}</td>
+                        <td style="padding: 5px 8px; color: #a78bfa; font-weight: 600;">{formatDelay(hole.delay_ms)}</td>
+                        <td style="padding: 5px 8px; color: var(--text3);">
+                          {hole.type === 'bouchon' ? '○ bouchon' : hole.type === 'tampon' ? '◐ tampon' : '● masse'}
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              {#if firingSequence.holes.length > 20}
+                <div style="font-size: 11px; color: var(--text3); margin-top: 6px; text-align: center;">
+                  ... et {firingSequence.holes.length - 20} autres trous
+                </div>
+              {/if}
+
+              <!-- Confidence + model info -->
+              <div style="
+                margin-top: 10px; padding: 8px 10px; background: var(--card2);
+                border-radius: var(--radius-sm); font-size: 10px; color: var(--text3);
+              ">
+                🤖 Extrait par {firingSequence.model ?? 'Gemini'} ·
+                Confiance {Math.round((firingSequence.confidence ?? 0) * 100)}% ·
+                {#if firingSequence.extractedAt}
+                  {new Date(firingSequence.extractedAt).toLocaleString('fr-CA')}
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
   {/if}

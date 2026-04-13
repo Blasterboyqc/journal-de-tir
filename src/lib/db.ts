@@ -83,6 +83,8 @@ export interface JournalTir {
   // Signature
   signature_data: string;
   signature_date: string;
+  // Vision AI — Firing Sequence (Phase 2)
+  firingSequence?: FiringSequence;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +106,31 @@ export interface GardienRow {
   poste: string;
 }
 
+// ─── Vision AI / Firing Sequence ──────────────────────────────────────────────
+
+export interface FiringHole {
+  id: number;
+  x: number;         // 0-1 normalized horizontal position (0=left, 1=right)
+  y: number;         // 0-1 normalized vertical position (0=top, 1=bottom)
+  delay_ms: number;  // delay in milliseconds (-1 if unknown)
+  type?: 'bouchon' | 'masse' | 'tampon';
+}
+
+export interface FiringConnection {
+  from: number;  // source hole ID
+  to: number;    // destination hole ID
+}
+
+export interface FiringSequence {
+  holes: FiringHole[];
+  connections?: FiringConnection[];
+  extractedAt?: string;  // ISO timestamp
+  confidence?: number;   // 0-1 extraction confidence
+  model?: string;        // AI model used
+  totalHolesDetected?: number;
+  delayRange?: { min: number; max: number };
+}
+
 class JournalDB extends Dexie {
   profil!: Table<ProfilBoutefeu>;
   journaux!: Table<JournalTir>;
@@ -111,6 +138,11 @@ class JournalDB extends Dexie {
   constructor() {
     super('JournalDeTirDB');
     this.version(1).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    // Version 2: adds firingSequence field (non-indexed — stored as JSON blob)
+    this.version(2).stores({
       profil: '++id',
       journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
     });
