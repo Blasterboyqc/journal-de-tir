@@ -4,10 +4,12 @@
   import { saveJournal, getProfil, genNumeroTir, type ExplosifRow, type GardienRow, type FiringSequence } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
-  import { extractFiringSequence, summarizeFiringSequence, groupHolesByDelay, formatDelay, pdfHasFiringSequencePage } from '$lib/vision-extract';
+  import { extractFiringSequence, summarizeFiringSequence } from '$lib/vision-extract';
   import BlastPatternCanvas from '$lib/components/BlastPatternCanvas.svelte';
+  import { validateJournal } from '$lib/validation';
 
-  // Form state
+  // ─── State ────────────────────────────────────────────────────────────────
+
   let saving = $state(false);
   let importing = $state(false);
   let visionExtracting = $state(false);
@@ -18,71 +20,138 @@
   let sigLastX = 0, sigLastY = 0;
   let pdfFileInput: HTMLInputElement;
 
-  // Form data
+  // Import summary state
+  let importSummary = $state<{
+    autoFilled: { field: string; label: string; value: string }[];
+    fieldsExtracted: number;
+    documentType: string;
+    warnings: string[];
+    explosifsCount: number;
+  } | null>(null);
+  let importSummaryExpanded = $state(true);
+
+  // Field source tracking: 'pdf' | 'vision' | 'manual' | 'changed'
+  let fieldSources = $state<Record<string, 'pdf' | 'vision' | 'changed'>>({});
+
+  // Form data — all ASP sections A-J
   let form = $state({
     numero_tir: genNumeroTir(),
     statut: 'brouillon' as 'brouillon' | 'complete' | 'archive',
-    // Identification
+
+    // Section A — Identification du chantier
     date_tir: new Date().toISOString().split('T')[0],
-    heure_tir: new Date().toTimeString().slice(0,5),
+    heure_tir: (() => {
+      const now = new Date();
+      const m = Math.round(now.getMinutes() / 15) * 15;
+      const h = now.getHours() + Math.floor(m / 60);
+      return String(h % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    })(),
+    nom_entreprise: '',
+    adresse_entreprise: '',
     chantier: '',
+    donneur_ouvrage: '',
     station: '',
     contrat: '',
-    // Boutefeu
+    nb_volees_quotidiennes: '',
+
+    // Section B — Boutefeu
     boutefeu_prenom: '',
     boutefeu_nom: '',
     boutefeu_certificat: '',
     boutefeu_permis_sq: '',
     superviseur: '',
     employeur: '',
-    // Conditions
+
+    // Section C — Conditions climatiques
     temperature: '',
     meteo: 'Ensoleillé',
+    meteo_ensoleille: false,
+    meteo_nuageux: false,
+    meteo_pluie: false,
+    meteo_neige: false,
+    vent_direction_vitesse: '',
     conditions_roc: 'Sec',
     geologie: '',
     type_roc: 'Roc dur',
-    // Plan de forage
+
+    // Section D — Données sur le forage
     type_tir: 'Banc',
     nb_trous: '',
-    profondeur_prevue: '',
-    profondeur_reelle: '',
     diametre: '',
     espacement: '',
     fardeau: '',
+    profondeur_prevue: '',
+    profondeur_reelle: '',
+    hauteur_collet: '',
+    nature_bourre: '',
+    hauteur_mort_terrain: '',
     sous_forage: '',
     inclinaison: '90',
     orientation: '',
-    // Explosifs
+    vibrations_valeur_respecter: '',
+    vibrations_ppv: '',
+    vibrations_sismographes: '',
+    nb_trous_predecoupage: '',
+    type_pare_eclats: '',
+    pare_eclats_dimension: '',
+    pare_eclats_nombre: '',
+
+    // Section E — Distances des structures
+    dist_batiment: '',
+    dist_pont: '',
+    dist_route: '',
+    dist_ligne_electrique: '',
+    dist_structure_souterraine: '',
+
+    // Section F — Explosifs / Détonateurs
     detonateurs: '',
     type_detonateurs: 'Non-électrique (NONEL)',
     sequence_delais: '',
     nb_detonateurs: '',
-    // Sécurité
+    type_emulsion_pompee: '',
+    volume_roc_m3: '',
+    facteur_chargement: '',
+
+    // Section G — Recommandations
+    camera_video: '' as '' | 'Oui' | 'Non',
+    ecaillage_securite: '' as '' | 'Oui' | 'Non',
+    detecteur_co_bnq: '' as '' | 'Oui' | 'Non',
+
+    // Sécurité opérationnelle
     zone_securite_m: '',
     signaux_utilises: '3 coups de klaxon (Attention), 1 coup (Tir), 2 coups (Tout clair)',
     procedures_suivies: false,
     zone_evacuee: false,
     communication_etablie: false,
     inspection_avant: false,
-    // Résultats
+
+    // Section H — Résultats du sautage
     heure_mise_a_feu: '',
-    fragmentation: '',
-    projection_max_m: '',
-    vibrations_ppv: '',
-    bruit_db: '',
-    fumee_couleur: '',
+    concentration_co_ppm: '',
+    fracturation_exigee: '' as '' | 'Oui' | 'Non',
+    bris_hors_profil: '' as '' | 'Oui' | 'Non',
     trous_rates: 'non',
     nb_trous_rates: '',
+    projection: '' as '' | 'Oui' | 'Non',
+    projection_distance_pierres: '',
+    description_dommages: '',
+    fragmentation: '',
+    projection_max_m: '',
+    bruit_db: '',
+    fumee_couleur: '',
     description_rates: '',
     procedures_rates: '',
     resultats_generaux: '',
+
     // Récap
     total_explosif_kg: '',
     total_detonateurs: '',
     ratio_poudre: '',
-    // Notes
+
+    // Section I — Remarques
     remarques: '',
-    // Signature
+
+    // Section J — Signature
     signature_data: '',
     signature_date: new Date().toISOString().split('T')[0],
   });
@@ -92,8 +161,29 @@
 
   // Vision AI — Firing Sequence (Phase 2)
   let firingSequence = $state<FiringSequence | null>(null);
-  let visionPdfFile = $state<File | null>(null);    // The last imported PDF (for Vision AI)
-  let visionShowPreview = $state(false);            // Whether to show the extracted holes preview
+  let visionPdfFile = $state<File | null>(null);
+  let visionShowPreview = $state(false);
+
+  // Validation state (derived)
+  let validationResult = $derived(validateJournal({
+    ...form,
+    explosifs,
+  }));
+
+  // ─── Section config ───────────────────────────────────────────────────────
+
+  const sections = [
+    '① Identification',
+    '② Boutefeu',
+    '③ Conditions',
+    '④ Forage',
+    '⑤ Explosifs',
+    '⑥ Sécurité',
+    '⑦ Résultats',
+    '⑧ Signature',
+  ];
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   onMount(async () => {
     const profil = await getProfil();
@@ -103,11 +193,13 @@
       form.boutefeu_certificat = profil.certificat_cstc;
       form.boutefeu_permis_sq = profil.permis_sq;
       form.employeur = profil.employeur;
+      form.nom_entreprise = profil.employeur;
       form.chantier = profil.chantier_actuel;
     }
-    // Init signature canvas
     setTimeout(() => initSig(), 100);
   });
+
+  // ─── Signature canvas ─────────────────────────────────────────────────────
 
   function initSig() {
     if (!sigCanvas) return;
@@ -164,6 +256,8 @@
     form.signature_data = '';
   }
 
+  // ─── Explosifs ────────────────────────────────────────────────────────────
+
   function addExplosif() {
     explosifs = [...explosifs, {
       id: Date.now().toString(),
@@ -190,10 +284,8 @@
     });
     form.total_explosif_kg = total > 0 ? total.toFixed(2) : '';
     form.total_detonateurs = form.nb_detonateurs;
-    // Ratio poudre rough estimate: assume 2.5t/m³ rock density, use nb_trous * profondeur * diameter area
     const nTrous = parseInt(form.nb_trous) || 0;
     const prof = parseFloat(form.profondeur_reelle || form.profondeur_prevue) || 0;
-    const diam = parseFloat(form.diametre) || 0;
     const esp = parseFloat(form.espacement) || 0;
     const fard = parseFloat(form.fardeau) || 0;
     if (total > 0 && esp > 0 && fard > 0 && prof > 0) {
@@ -211,6 +303,8 @@
     recalcTotal();
   }
 
+  // ─── Gardiens ─────────────────────────────────────────────────────────────
+
   function addGardien() {
     gardiens = [...gardiens, { id: Date.now().toString(), nom: '', poste: '' }];
   }
@@ -219,11 +313,20 @@
     gardiens = gardiens.filter(g => g.id !== id);
   }
 
+  // ─── Save ─────────────────────────────────────────────────────────────────
+
   async function saveAsDraft() {
     await doSave('brouillon');
   }
 
   async function saveAsComplete() {
+    if (!validationResult.valid) {
+      showToast(`❌ ${validationResult.errors[0]}`, 'error');
+      // Navigate to problematic section
+      const firstErrSection = validationResult.sectionStatus.findIndex(s => s.status === 'error');
+      if (firstErrSection >= 0) activeSection = firstErrSection;
+      return;
+    }
     await doSave('complete');
   }
 
@@ -251,80 +354,120 @@
     }
   }
 
+  // ─── Field source helpers ─────────────────────────────────────────────────
+
+  function markFieldSource(field: string, source: 'pdf' | 'vision') {
+    fieldSources[field] = source;
+  }
+
+  function onFieldChange(field: string) {
+    if (fieldSources[field] === 'pdf' || fieldSources[field] === 'vision') {
+      fieldSources[field] = 'changed';
+    }
+  }
+
+  function fieldBorderStyle(field: string): string {
+    const src = fieldSources[field];
+    if (src === 'pdf') return 'border-left: 3px solid #3b82f6 !important;';
+    if (src === 'vision') return 'border-left: 3px solid #a855f7 !important;';
+    if (src === 'changed') return 'border-left: 3px solid #22c55e !important;';
+    return '';
+  }
+
+  // ─── PDF Import ───────────────────────────────────────────────────────────
+
   async function importFromPDF(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
 
-    // Store the file for Vision AI use (pdfHasFiringSequencePage check is done in the UI)
     visionPdfFile = file;
-    firingSequence = null;  // Reset any previous extraction when a new PDF is loaded
+    firingSequence = null;
     visionShowPreview = false;
+    importSummary = null;
+    importSummaryExpanded = true;
+    fieldSources = {};
 
     importing = true;
     try {
       const result = await parseBlastPlanPDF(file);
       const data = result.journalData;
 
-      // Apply parsed fields to the form (only overwrite empty fields, except for key fields)
-      if (data.numero_tir) form.numero_tir = data.numero_tir;
-      if (data.date_tir) form.date_tir = data.date_tir;
-      if (data.station) form.station = data.station;
-      if (data.chantier) form.chantier = data.chantier;
-      if (data.contrat) form.contrat = data.contrat;
-      if (data.type_tir) form.type_tir = data.type_tir;
-      if (data.nb_trous) form.nb_trous = data.nb_trous;
-      if (data.profondeur_prevue) form.profondeur_prevue = data.profondeur_prevue;
-      if (data.diametre) form.diametre = data.diametre;
-      if (data.espacement) form.espacement = data.espacement;
-      if (data.fardeau) form.fardeau = data.fardeau;
-      if (data.sous_forage) form.sous_forage = data.sous_forage;
-      if (data.inclinaison) form.inclinaison = data.inclinaison;
-      if (data.detonateurs) form.detonateurs = data.detonateurs;
-      if (data.type_detonateurs) form.type_detonateurs = data.type_detonateurs;
-      if (data.nb_detonateurs) form.nb_detonateurs = data.nb_detonateurs;
-      if (data.sequence_delais) form.sequence_delais = data.sequence_delais;
-      if (data.superviseur && !form.superviseur) form.superviseur = data.superviseur;
-      if (data.total_explosif_kg) form.total_explosif_kg = data.total_explosif_kg;
-      if (data.vibrations_ppv) form.vibrations_ppv = data.vibrations_ppv;
+      const autoFilled: { field: string; label: string; value: string }[] = [];
+
+      function applyField(field: string, label: string, val: string | undefined, force = false) {
+        if (!val) return;
+        const existing = (form as Record<string, string>)[field];
+        if (force || !existing) {
+          (form as Record<string, string>)[field] = val;
+          markFieldSource(field, 'pdf');
+          autoFilled.push({ field, label, value: val.substring(0, 60) });
+        }
+      }
+
+      applyField('numero_tir', 'Numéro de tir', data.numero_tir, true);
+      applyField('date_tir', 'Date du tir', data.date_tir, true);
+      applyField('station', 'Localisation / chaînage', data.station);
+      applyField('chantier', 'Localisation du chantier', data.chantier);
+      applyField('contrat', 'No. contrat', data.contrat);
+      applyField('type_tir', 'Type de tir', data.type_tir, true);
+      applyField('nb_trous', 'Nombre de trous', data.nb_trous, true);
+      applyField('diametre', 'Diamètre de forage', data.diametre);
+      applyField('profondeur_prevue', 'Profondeur prévue', data.profondeur_prevue);
+      applyField('espacement', 'Espacement', data.espacement);
+      applyField('fardeau', 'Fardeau', data.fardeau);
+      applyField('sous_forage', 'Sous-forage', data.sous_forage);
+      applyField('inclinaison', 'Inclinaison', data.inclinaison);
+      applyField('detonateurs', 'Marque détonateurs', data.detonateurs);
+      applyField('type_detonateurs', 'Type détonateurs', data.type_detonateurs, true);
+      applyField('nb_detonateurs', 'Nb détonateurs', data.nb_detonateurs, true);
+      applyField('sequence_delais', 'Séquence délais', data.sequence_delais);
+      applyField('vibrations_ppv', 'Vibrations PPV', data.vibrations_ppv);
+
+      if (data.superviseur && !form.superviseur) {
+        form.superviseur = data.superviseur;
+        markFieldSource('superviseur', 'pdf');
+        autoFilled.push({ field: 'superviseur', label: 'Superviseur', value: data.superviseur });
+      }
       if (data.remarques) {
         form.remarques = form.remarques
           ? form.remarques + '\n\n' + data.remarques
           : data.remarques;
+        markFieldSource('remarques', 'pdf');
+        autoFilled.push({ field: 'remarques', label: 'Remarques', value: data.remarques.substring(0, 60) });
       }
 
-      // Apply explosifs array
+      let explosifsCount = 0;
       if (data.explosifs && data.explosifs.length > 0) {
         explosifs = data.explosifs.map(e => ({ ...e, id: Date.now().toString() + Math.random() }));
+        explosifsCount = explosifs.length;
         recalcTotal();
+        autoFilled.push({ field: 'explosifs', label: 'Produits explosifs', value: `${explosifsCount} produit(s) importé(s)` });
       }
 
-      // Show success toast
-      const count = result.fieldsExtracted;
       const typeLabel = result.documentType === 'bench' ? 'banquette'
         : result.documentType === 'tunnel_advance' ? 'foncée' : 'inconnu';
-      showToast(`📋 ${count} champs remplis automatiquement (plan de ${typeLabel})`, 'success');
 
-      // Show warnings if any
-      if (result.warnings && result.warnings.length > 0) {
-        setTimeout(() => {
-          showToast(`⚠️ ${result.warnings[0]}`, 'info');
-        }, 4000);
-      }
+      importSummary = {
+        autoFilled,
+        fieldsExtracted: result.fieldsExtracted,
+        documentType: typeLabel,
+        warnings: result.warnings || [],
+        explosifsCount,
+      };
 
-      // Navigate to the identification section so user can review
+      showToast(`📋 ${result.fieldsExtracted} champs remplis automatiquement (plan de ${typeLabel})`, 'success');
       activeSection = 0;
     } catch (err) {
       console.error('PDF import error:', err);
       showToast('❌ Erreur lors de l\'analyse du PDF', 'error');
     } finally {
       importing = false;
-      // Reset file input so same file can be re-imported
       if (pdfFileInput) pdfFileInput.value = '';
     }
   }
 
-  // ─── Vision AI Extraction ──────────────────────────────────────────────────
+  // ─── Vision AI Extraction ─────────────────────────────────────────────────
 
   async function runVisionExtract() {
     if (!visionPdfFile) {
@@ -337,19 +480,19 @@
     try {
       showToast('🤖 Analyse Vision AI en cours... (peut prendre 15-30 sec)', 'info');
 
-      // Build shot info hints from parsed form data
       const shotInfo = {
         tirNumber: form.numero_tir ? parseInt(form.numero_tir.replace(/\D/g, '').slice(-4)) || undefined : undefined,
         totalHoles: form.nb_trous ? parseInt(form.nb_trous) || undefined : undefined,
       };
 
-      const result = await extractFiringSequence(
-        visionPdfFile,
-        shotInfo
-      );
-
+      const result = await extractFiringSequence(visionPdfFile, shotInfo);
       firingSequence = result.firingSequence;
       visionShowPreview = true;
+
+      // Mark sequence_delais as vision-sourced
+      if (result.firingSequence.holes.length > 0) {
+        markFieldSource('sequence_delais', 'vision');
+      }
 
       const confidence = Math.round((result.firingSequence.confidence ?? 0) * 100);
       const holeCount = result.firingSequence.holes.length;
@@ -372,16 +515,15 @@
     }
   }
 
-  const sections = [
-    '① Identification',
-    '② Boutefeu',
-    '③ Conditions',
-    '④ Forage',
-    '⑤ Explosifs',
-    '⑥ Sécurité',
-    '⑦ Résultats',
-    '⑧ Signature',
-  ];
+  // ─── Validation section badge helper ─────────────────────────────────────
+
+  function sectionBadge(i: number): string {
+    if (!validationResult.sectionStatus[i]) return '';
+    const s = validationResult.sectionStatus[i];
+    if (s.status === 'error') return '❌';
+    if (s.status === 'warning') return '⚠️';
+    return '';
+  }
 </script>
 
 <div style="padding: 12px 12px 0;">
@@ -420,7 +562,7 @@
           class="btn btn-secondary btn-sm"
           disabled={visionExtracting}
           style="background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.4); color: #a78bfa;"
-          title="Extraire la séquence de tir (trous, délais) depuis la page C du PDF via Vision AI"
+          title="Extraire la séquence de tir via Vision AI"
         >
           {visionExtracting ? '🤖 Vision AI...' : firingSequence ? '✅ Séquence extraite' : '🔍 Séquence de tir'}
         </button>
@@ -431,12 +573,96 @@
     </div>
   </div>
 
-  <!-- Section tabs (scrollable) -->
+  <!-- ── Import Summary Panel ─────────────────────────────────────────────── -->
+  {#if importSummary}
+    <div style="
+      background: var(--card); border: 1px solid rgba(79,110,247,0.4);
+      border-radius: var(--radius); margin-bottom: 12px; overflow: hidden;
+    ">
+      <!-- Summary header -->
+      <button
+        onclick={() => importSummaryExpanded = !importSummaryExpanded}
+        style="
+          width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+          background: rgba(79,110,247,0.08); border: none; cursor: pointer;
+          font-family: inherit; text-align: left;
+        "
+      >
+        <span style="font-size: 14px;">📋</span>
+        <div style="flex: 1;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--accent2);">
+            Import PDF — {importSummary.fieldsExtracted} champs remplis automatiquement
+          </span>
+          <span style="font-size: 11px; color: var(--text3); margin-left: 8px;">
+            Plan de {importSummary.documentType}
+            {importSummary.explosifsCount > 0 ? ` · ${importSummary.explosifsCount} produit(s) explosif(s)` : ''}
+          </span>
+        </div>
+        <!-- Legend -->
+        <div style="display: flex; gap: 8px; align-items: center; font-size: 10px; color: var(--text3);">
+          <span style="display: flex; align-items: center; gap: 3px;">
+            <span style="width: 10px; height: 10px; background: #3b82f6; border-radius: 2px; display: inline-block;"></span> PDF
+          </span>
+          <span style="display: flex; align-items: center; gap: 3px;">
+            <span style="width: 10px; height: 10px; background: #a855f7; border-radius: 2px; display: inline-block;"></span> Vision
+          </span>
+          <span style="display: flex; align-items: center; gap: 3px;">
+            <span style="width: 10px; height: 10px; background: #22c55e; border-radius: 2px; display: inline-block;"></span> Modifié
+          </span>
+        </div>
+        <span style="font-size: 12px; color: var(--text3);">{importSummaryExpanded ? '▲' : '▼'}</span>
+      </button>
+
+      {#if importSummaryExpanded}
+        <div style="padding: 12px 14px;">
+          <!-- Auto-filled fields list -->
+          {#if importSummary.autoFilled.length > 0}
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+              {#each importSummary.autoFilled as item}
+                <div style="
+                  display: flex; align-items: center; gap: 5px;
+                  background: var(--card2); border: 1px solid var(--border);
+                  border-radius: 6px; padding: 4px 8px; font-size: 11px;
+                ">
+                  <span style="color: var(--accent2); font-weight: 600;">{item.label}:</span>
+                  <span style="color: var(--text2); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{item.value}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Warnings -->
+          {#if importSummary.warnings.length > 0}
+            <div style="border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px;">
+              <div style="font-size: 11px; font-weight: 700; color: #f59e0b; margin-bottom: 6px;">⚠️ Avertissements</div>
+              {#each importSummary.warnings as warning}
+                <div style="font-size: 11px; color: var(--text3); margin-bottom: 3px;">• {warning}</div>
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Reminder to review -->
+          <div style="
+            font-size: 11px; color: var(--text3); margin-top: 8px;
+            padding: 8px 10px; background: var(--card2); border-radius: 6px; line-height: 1.5;
+          ">
+            💡 Les champs <span style="color: #3b82f6; font-weight: 600;">bleus</span> ont été remplis par le PDF parser ·
+            <span style="color: #a855f7; font-weight: 600;">violets</span> par Vision AI ·
+            <span style="color: #22c55e; font-weight: 600;">verts</span> ont été modifiés manuellement après import.
+            Vérifiez et corrigez au besoin.
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- ── Section tabs with validation badges ─────────────────────────────── -->
   <div style="
     display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px;
     scrollbar-width: none; margin-bottom: 12px;
   ">
     {#each sections as sec, i}
+      {@const badge = sectionBadge(i)}
       <button
         onclick={() => activeSection = i}
         style="
@@ -444,25 +670,111 @@
           cursor: pointer; border: 1px solid {activeSection === i ? 'var(--accent)' : 'var(--border)'};
           background: {activeSection === i ? 'var(--accent-glow)' : 'var(--card2)'};
           color: {activeSection === i ? 'var(--accent2)' : 'var(--text3)'};
-          white-space: nowrap; font-family: inherit;
+          white-space: nowrap; font-family: inherit; position: relative;
         "
-      >{sec}</button>
+      >{sec}{badge ? ` ${badge}` : ''}</button>
     {/each}
   </div>
 
-  <!-- SECTION 1: IDENTIFICATION -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 1: IDENTIFICATION (ASP sections A+B) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 0}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">①</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Identification du chantier</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Sections A+B</span>
     </div>
     <div class="card-body">
+      <!-- A1: Nom de l'entreprise -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[A1] Nom de l'entreprise</label>
+          <input type="text" bind:value={form.nom_entreprise}
+            oninput={() => onFieldChange('nom_entreprise')}
+            style={fieldBorderStyle('nom_entreprise')}
+            placeholder="Raison sociale de l'entreprise">
+        </div>
+      </div>
+      <!-- A2: Adresse -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[A2] Adresse (optionnel)</label>
+          <input type="text" bind:value={form.adresse_entreprise}
+            oninput={() => onFieldChange('adresse_entreprise')}
+            style={fieldBorderStyle('adresse_entreprise')}
+            placeholder="Adresse de l'entreprise">
+        </div>
+      </div>
+      <!-- A3: Localisation du chantier -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[A3] Localisation du chantier <span style="color:var(--red)">*</span></label>
+          <input type="text" bind:value={form.chantier}
+            oninput={() => onFieldChange('chantier')}
+            style={fieldBorderStyle('chantier')}
+            placeholder="ex: PLB Metro — Secteur Anjou">
+        </div>
+      </div>
+      <!-- A4: Donneur d'ouvrage -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[A4] Donneur d'ouvrage</label>
+          <input type="text" bind:value={form.donneur_ouvrage}
+            oninput={() => onFieldChange('donneur_ouvrage')}
+            style={fieldBorderStyle('donneur_ouvrage')}
+            placeholder="Maître d'ouvrage / client">
+        </div>
+      </div>
+      <div class="divider"></div>
+      <!-- B1+B2+B3+B4 -->
       <div class="form-row">
         <div class="form-group">
-          <label>Numéro de tir</label>
-          <input type="text" bind:value={form.numero_tir} placeholder="TIR-XXXXXX">
+          <label>[B1] Localisation / chaînage</label>
+          <input type="text" bind:value={form.station}
+            oninput={() => onFieldChange('station')}
+            style={fieldBorderStyle('station')}
+            placeholder="ex: Station ST-085, ch. 1+250">
         </div>
+        <div class="form-group">
+          <label>No. contrat</label>
+          <input type="text" bind:value={form.contrat}
+            oninput={() => onFieldChange('contrat')}
+            style={fieldBorderStyle('contrat')}
+            placeholder="ex: C-2024-1234">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>[B2] Date du tir <span style="color:var(--red)">*</span></label>
+          <input type="date" bind:value={form.date_tir}
+            oninput={() => onFieldChange('date_tir')}
+            style={fieldBorderStyle('date_tir')}>
+        </div>
+        <div class="form-group">
+          <label>[B3] Heure prévue</label>
+          <input type="time" bind:value={form.heure_tir}
+            oninput={() => onFieldChange('heure_tir')}
+            style={fieldBorderStyle('heure_tir')}>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>[B4] Nombre de volées quotidiennes</label>
+          <input type="number" bind:value={form.nb_volees_quotidiennes}
+            style={fieldBorderStyle('nb_volees_quotidiennes')}
+            placeholder="ex: 2">
+        </div>
+        <div class="form-group">
+          <label>Numéro de tir</label>
+          <input type="text" bind:value={form.numero_tir}
+            oninput={() => onFieldChange('numero_tir')}
+            style={fieldBorderStyle('numero_tir')}
+            placeholder="TIR-XXXXXX">
+        </div>
+      </div>
+      <div class="form-row">
         <div class="form-group">
           <label>Statut</label>
           <select bind:value={form.statut}>
@@ -472,47 +784,24 @@
           </select>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Date du tir <span style="color:var(--red)">*</span></label>
-          <input type="date" bind:value={form.date_tir}>
-        </div>
-        <div class="form-group">
-          <label>Heure prévue <span style="color:var(--red)">*</span></label>
-          <input type="time" bind:value={form.heure_tir}>
-        </div>
-      </div>
-      <div class="form-row cols1">
-        <div class="form-group">
-          <label>Chantier / Projet <span style="color:var(--red)">*</span></label>
-          <input type="text" bind:value={form.chantier} placeholder="ex: PLB Metro — Secteur Anjou">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Station / Localisation</label>
-          <input type="text" bind:value={form.station} placeholder="ex: Station ST-085">
-        </div>
-        <div class="form-group">
-          <label>No. contrat</label>
-          <input type="text" bind:value={form.contrat} placeholder="ex: C-2024-1234">
-        </div>
-      </div>
     </div>
   </div>
   {/if}
 
-  <!-- SECTION 2: BOUTEFEU -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 2: BOUTEFEU (ASP Section J signature) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 1}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">②</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Boutefeu et permis</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Section J</span>
     </div>
     <div class="card-body">
       <div class="form-row">
         <div class="form-group">
-          <label>Prénom <span style="color:var(--red)">*</span></label>
+          <label>[J1] Prénom <span style="color:var(--red)">*</span></label>
           <input type="text" bind:value={form.boutefeu_prenom} placeholder="Prénom">
         </div>
         <div class="form-group">
@@ -533,7 +822,10 @@
       <div class="form-row">
         <div class="form-group">
           <label>Superviseur</label>
-          <input type="text" bind:value={form.superviseur} placeholder="Nom du superviseur">
+          <input type="text" bind:value={form.superviseur}
+            oninput={() => onFieldChange('superviseur')}
+            style={fieldBorderStyle('superviseur')}
+            placeholder="Nom du superviseur">
         </div>
         <div class="form-group">
           <label>Employeur</label>
@@ -544,33 +836,61 @@
   </div>
   {/if}
 
-  <!-- SECTION 3: CONDITIONS -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 3: CONDITIONS (ASP Section C) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 2}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">③</div>
-      <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Conditions météo et géologie</h3>
+      <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Conditions climatiques</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Section C</span>
     </div>
     <div class="card-body">
+      <!-- C1: Température + C2-C5 météo checkboxes -->
       <div class="form-row">
         <div class="form-group">
-          <label>Température (°C)</label>
+          <label>[C1] Température (°C)</label>
           <input type="number" bind:value={form.temperature} placeholder="-10 à 40">
         </div>
-        <div class="form-group">
-          <label>Météo</label>
-          <select bind:value={form.meteo}>
-            <option>Ensoleillé</option>
-            <option>Nuageux</option>
-            <option>Pluie légère</option>
-            <option>Pluie forte</option>
-            <option>Neige</option>
-            <option>Tempête</option>
-            <option>Brouillard</option>
-            <option>Vent fort</option>
-          </select>
+      </div>
+
+      <!-- C2-C5: Météo checkboxes (multi-select, ASP style) -->
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 8px;">Conditions météo (C2–C5)</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          {#each [
+            { key: 'meteo_ensoleille' as const, label: '☀️ Ensoleillé' },
+            { key: 'meteo_nuageux' as const, label: '☁️ Nuageux' },
+            { key: 'meteo_pluie' as const, label: '🌧️ Pluie' },
+            { key: 'meteo_neige' as const, label: '❄️ Neige' },
+          ] as opt}
+            <button
+              onclick={() => { (form as any)[opt.key] = !(form as any)[opt.key]; }}
+              style="
+                padding: 9px 12px; border-radius: var(--radius-sm); text-align: center;
+                border: 1px solid {(form as any)[opt.key] ? 'var(--accent)' : 'var(--border)'};
+                background: {(form as any)[opt.key] ? 'var(--accent-glow)' : 'var(--card2)'};
+                color: {(form as any)[opt.key] ? 'var(--accent2)' : 'var(--text3)'};
+                font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+              "
+            >{opt.label}</button>
+          {/each}
         </div>
       </div>
+
+      <!-- C6: Direction et vitesse des vents -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[C6] Direction et vitesse des vents</label>
+          <input type="text" bind:value={form.vent_direction_vitesse}
+            placeholder="ex: NE 20 km/h">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Géologie (extra info) -->
       <div class="form-row">
         <div class="form-group">
           <label>Type de roc</label>
@@ -599,21 +919,25 @@
       <div class="form-row cols1">
         <div class="form-group">
           <label>Géologie / Description du terrain</label>
-          <textarea bind:value={form.geologie} placeholder="Description détaillée de la géologie, particularités..."></textarea>
+          <textarea bind:value={form.geologie} placeholder="Description détaillée de la géologie..."></textarea>
         </div>
       </div>
     </div>
   </div>
   {/if}
 
-  <!-- SECTION 4: PLAN DE FORAGE -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 4: FORAGE (ASP Sections D + E) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 3}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">④</div>
-      <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Plan de forage</h3>
+      <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Données sur le forage</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Sections D+E</span>
     </div>
     <div class="card-body">
+
       <div class="form-row">
         <div class="form-group">
           <label>Type de tir <span style="color:var(--red)">*</span></label>
@@ -630,64 +954,224 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Nombre de trous <span style="color:var(--red)">*</span></label>
-          <input type="number" bind:value={form.nb_trous} placeholder="ex: 24">
+          <label>[D1] Nombre de trous <span style="color:var(--red)">*</span></label>
+          <input type="number" bind:value={form.nb_trous}
+            oninput={() => onFieldChange('nb_trous')}
+            style={fieldBorderStyle('nb_trous')}
+            placeholder="ex: 24">
         </div>
       </div>
+
+      <div class="form-row cols3">
+        <div class="form-group">
+          <label>[D1] Diamètre (mm)</label>
+          <input type="number" bind:value={form.diametre}
+            oninput={() => onFieldChange('diametre')}
+            style={fieldBorderStyle('diametre')}
+            placeholder="ex: 76">
+        </div>
+        <div class="form-group">
+          <label>[D2] Espacement (m)</label>
+          <input type="number" step="0.1" bind:value={form.espacement}
+            oninput={() => onFieldChange('espacement')}
+            style={fieldBorderStyle('espacement')}
+            placeholder="ex: 1.8">
+        </div>
+        <div class="form-group">
+          <label>[D2] Fardeau (m)</label>
+          <input type="number" step="0.1" bind:value={form.fardeau}
+            oninput={() => onFieldChange('fardeau')}
+            style={fieldBorderStyle('fardeau')}
+            placeholder="ex: 1.5">
+        </div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
-          <label>Profondeur prévue (m)</label>
-          <input type="number" step="0.1" bind:value={form.profondeur_prevue} placeholder="ex: 4.5">
+          <label>[D3] Profondeur prévue (m)</label>
+          <input type="number" step="0.1" bind:value={form.profondeur_prevue}
+            oninput={() => onFieldChange('profondeur_prevue')}
+            style={fieldBorderStyle('profondeur_prevue')}
+            placeholder="ex: 4.5">
         </div>
         <div class="form-group">
           <label>Profondeur réelle (m)</label>
           <input type="number" step="0.1" bind:value={form.profondeur_reelle} placeholder="ex: 4.3">
         </div>
       </div>
-      <div class="form-row cols3">
+
+      <div class="form-row">
         <div class="form-group">
-          <label>Diamètre (mm)</label>
-          <input type="number" bind:value={form.diametre} placeholder="ex: 76">
+          <label>[D4] Hauteur du collet (m)</label>
+          <input type="number" step="0.1" bind:value={form.hauteur_collet}
+            oninput={() => onFieldChange('hauteur_collet')}
+            style={fieldBorderStyle('hauteur_collet')}
+            placeholder="ex: 1.2">
         </div>
         <div class="form-group">
-          <label>Espacement (m)</label>
-          <input type="number" step="0.1" bind:value={form.espacement} placeholder="ex: 1.8">
-        </div>
-        <div class="form-group">
-          <label>Fardeau (m)</label>
-          <input type="number" step="0.1" bind:value={form.fardeau} placeholder="ex: 1.5">
+          <label>[D5] Hauteur mort terrain (m)</label>
+          <input type="number" step="0.1" bind:value={form.hauteur_mort_terrain}
+            oninput={() => onFieldChange('hauteur_mort_terrain')}
+            style={fieldBorderStyle('hauteur_mort_terrain')}
+            placeholder="ex: 0.5">
         </div>
       </div>
+
+      <!-- D4b: Nature de la bourre (exclusive radio) -->
+      <div style="margin-bottom: 12px;">
+        <label style="display: block; margin-bottom: 8px;">[D4b] Nature de la bourre</label>
+        <div style="display: flex; gap: 8px;">
+          {#each ['pierre nette', 'concassée'] as opt}
+            <button
+              onclick={() => form.nature_bourre = opt}
+              style="
+                flex: 1; padding: 9px; border-radius: var(--radius-sm);
+                border: 1px solid {form.nature_bourre === opt ? 'var(--accent)' : 'var(--border)'};
+                background: {form.nature_bourre === opt ? 'var(--accent-glow)' : 'var(--card2)'};
+                color: {form.nature_bourre === opt ? 'var(--accent2)' : 'var(--text3)'};
+                font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+              "
+            >{opt}</button>
+          {/each}
+          <button
+            onclick={() => form.nature_bourre = ''}
+            style="
+              padding: 9px 12px; border-radius: var(--radius-sm);
+              border: 1px solid {form.nature_bourre === '' ? 'var(--accent)' : 'var(--border)'};
+              background: {form.nature_bourre === '' ? 'var(--accent-glow)' : 'var(--card2)'};
+              color: {form.nature_bourre === '' ? 'var(--accent2)' : 'var(--text3)'};
+              font-size: 11px; cursor: pointer; font-family: inherit;
+            "
+          >—</button>
+        </div>
+      </div>
+
       <div class="form-row cols3">
         <div class="form-group">
           <label>Sous-forage (m)</label>
-          <input type="number" step="0.1" bind:value={form.sous_forage} placeholder="ex: 0.4">
+          <input type="number" step="0.1" bind:value={form.sous_forage}
+            oninput={() => onFieldChange('sous_forage')}
+            style={fieldBorderStyle('sous_forage')}
+            placeholder="ex: 0.4">
         </div>
         <div class="form-group">
           <label>Inclinaison (°)</label>
-          <input type="number" bind:value={form.inclinaison} placeholder="90 = vertical">
+          <input type="number" bind:value={form.inclinaison}
+            oninput={() => onFieldChange('inclinaison')}
+            style={fieldBorderStyle('inclinaison')}
+            placeholder="90 = vertical">
         </div>
         <div class="form-group">
           <label>Orientation</label>
           <input type="text" bind:value={form.orientation} placeholder="ex: N45E">
         </div>
       </div>
+
+      <!-- D6: Vibrations -->
+      <div style="
+        background: var(--card2); border: 1px solid var(--border);
+        border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
+      ">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+          [D6] Vibrations
+        </div>
+        <div class="form-row cols3">
+          <div class="form-group">
+            <label>[D6a] Valeur à respecter</label>
+            <input type="text" bind:value={form.vibrations_valeur_respecter}
+              oninput={() => onFieldChange('vibrations_valeur_respecter')}
+              style={fieldBorderStyle('vibrations_valeur_respecter')}
+              placeholder="ex: 10 mm/s">
+          </div>
+          <div class="form-group">
+            <label>[D6b] Valeur obtenue (PPV)</label>
+            <input type="text" bind:value={form.vibrations_ppv}
+              oninput={() => onFieldChange('vibrations_ppv')}
+              style={fieldBorderStyle('vibrations_ppv')}
+              placeholder="ex: 2.45 mm/s">
+          </div>
+        </div>
+        <div class="form-row cols1">
+          <div class="form-group">
+            <label>[D6c] Emplacement des sismographes</label>
+            <input type="text" bind:value={form.vibrations_sismographes}
+              oninput={() => onFieldChange('vibrations_sismographes')}
+              style={fieldBorderStyle('vibrations_sismographes')}
+              placeholder="ex: Bâtiment résidentiel 85m N-E">
+          </div>
+        </div>
+      </div>
+
+      <!-- D7: Pré-découpage -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[D7] Nombre de trous de pré-découpage</label>
+          <input type="text" bind:value={form.nb_trous_predecoupage}
+            placeholder="ex: 8 trous (voir plan de tir)">
+        </div>
+      </div>
+
+      <!-- D8: Pare-éclats -->
+      <div class="form-row cols3">
+        <div class="form-group">
+          <label>[D8] Type de pare-éclats</label>
+          <input type="text" bind:value={form.type_pare_eclats} placeholder="ex: Géotextile, sable">
+        </div>
+        <div class="form-group">
+          <label>[D8b] Dimension</label>
+          <input type="text" bind:value={form.pare_eclats_dimension} placeholder="ex: 4×6m">
+        </div>
+        <div class="form-group">
+          <label>[D8c] Nombre</label>
+          <input type="number" bind:value={form.pare_eclats_nombre} placeholder="ex: 3">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Section E: Distances des structures -->
+      <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+        [Section E] Distance des structures les plus près (en mètres)
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        {#each [
+          { key: 'dist_batiment' as const, label: '[E1] Bâtiment' },
+          { key: 'dist_pont' as const, label: '[E2] Pont' },
+          { key: 'dist_route' as const, label: '[E3] Route' },
+          { key: 'dist_ligne_electrique' as const, label: '[E4] Ligne électrique' },
+        ] as item}
+          <div class="form-group">
+            <label>{item.label} (m)</label>
+            <input type="number" step="0.1" bind:value={(form as any)[item.key]}
+              placeholder="distance en m">
+          </div>
+        {/each}
+      </div>
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[E5] Structure sous-terraine (m)</label>
+          <input type="number" step="0.1" bind:value={form.dist_structure_souterraine} placeholder="distance en m">
+        </div>
+      </div>
     </div>
   </div>
   {/if}
 
-  <!-- SECTION 5: EXPLOSIFS -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 5: EXPLOSIFS (ASP Sections F + Vision AI) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 4}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">⑤</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Explosifs et détonateurs</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Section F</span>
     </div>
     <div class="card-body">
 
       <!-- Explosifs Table -->
       <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-        Produits explosifs
+        [F1/F3] Produits explosifs
       </div>
 
       {#if explosifs.length === 0}
@@ -768,7 +1252,6 @@
         ➕ Ajouter un produit explosif
       </button>
 
-      <!-- Recap -->
       {#if form.total_explosif_kg}
         <div style="
           background: var(--green-dim); border: 1px solid rgba(46,204,113,0.3);
@@ -782,14 +1265,38 @@
 
       <div class="divider"></div>
 
+      <!-- F4: Type émulsion pompée -->
+      <div class="form-row cols1">
+        <div class="form-group">
+          <label>[F4] Type d'émulsion pompée (s'il y a lieu)</label>
+          <input type="text" bind:value={form.type_emulsion_pompee}
+            placeholder="ex: Emulsion 70/30, pompe mobile">
+        </div>
+      </div>
+
+      <!-- F5 + F6 -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>[F5] Volume de roc (m³)</label>
+          <input type="number" step="0.1" bind:value={form.volume_roc_m3} placeholder="ex: 150">
+        </div>
+        <div class="form-group">
+          <label>[F6] Facteur de chargement (kg/m³)</label>
+          <input type="number" step="0.01" bind:value={form.facteur_chargement} placeholder="ex: 0.35">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
       <!-- Détonateurs -->
       <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-        Détonateurs et amorçage
+        [F2] Détonateurs et amorçage
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Type de détonateurs</label>
-          <select bind:value={form.type_detonateurs}>
+          <select bind:value={form.type_detonateurs}
+            style={fieldBorderStyle('type_detonateurs')}>
             <option>Non-électrique (NONEL)</option>
             <option>Électrique</option>
             <option>Électronique (eDev)</option>
@@ -798,31 +1305,39 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Nb détonateurs</label>
-          <input type="number" bind:value={form.nb_detonateurs} placeholder="Total">
+          <label>[F2] Nb détonateurs</label>
+          <input type="number" bind:value={form.nb_detonateurs}
+            oninput={() => onFieldChange('nb_detonateurs')}
+            style={fieldBorderStyle('nb_detonateurs')}
+            placeholder="Total">
         </div>
       </div>
       <div class="form-row cols1">
         <div class="form-group">
           <label>Marque / Modèle de détonateurs</label>
-          <input type="text" bind:value={form.detonateurs} placeholder="ex: Dyno Nobel Exel LP, MS 500ms">
+          <input type="text" bind:value={form.detonateurs}
+            oninput={() => onFieldChange('detonateurs')}
+            style={fieldBorderStyle('detonateurs')}
+            placeholder="ex: Dyno Nobel Exel LP, MS 500ms">
         </div>
       </div>
       <div class="form-row cols1">
         <div class="form-group">
           <label>Séquence et délais de tir</label>
-          <textarea bind:value={form.sequence_delais} placeholder="ex: Rangée 1 (0ms) → Rangée 2 (17ms) → Rangée 3 (42ms)..."></textarea>
+          <textarea bind:value={form.sequence_delais}
+            style={fieldBorderStyle('sequence_delais')}
+            oninput={() => onFieldChange('sequence_delais')}
+            placeholder="ex: Rangée 1 (0ms) → Rangée 2 (17ms) → Rangée 3 (42ms)..."></textarea>
         </div>
       </div>
 
-      <!-- ──── Vision AI — Firing Sequence Extraction ──── -->
+      <!-- Vision AI — Firing Sequence Extraction -->
       <div class="divider"></div>
       <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
         Séquence de tir — Vision AI (Page C)
       </div>
 
       {#if !visionPdfFile}
-        <!-- No PDF imported yet -->
         <div style="
           padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius-sm);
           background: var(--card2); text-align: center; color: var(--text3); font-size: 12px;
@@ -830,16 +1345,12 @@
           📄 Importez d'abord un plan de tir PDF pour activer l'extraction Vision AI
         </div>
       {:else if !firingSequence}
-        <!-- PDF imported, ready to extract -->
         <div style="
           padding: 14px; border: 1px dashed rgba(139,92,246,0.3); border-radius: var(--radius-sm);
           background: rgba(139,92,246,0.05);
         ">
           <div style="font-size: 13px; color: var(--text2); margin-bottom: 10px;">
-            🤖 Extrayez automatiquement les positions et délais de chaque trou depuis le diagramme de séquence (page C du plan de tir).
-          </div>
-          <div style="font-size: 11px; color: var(--text3); margin-bottom: 10px; line-height: 1.5;">
-            Utilise Google Gemini Flash (Vision AI) pour lire le diagramme raster et identifier les trous, délais (ms) et connexions.
+            🤖 Extrayez automatiquement les positions et délais de chaque trou depuis le diagramme de séquence via Vision AI.
           </div>
           <button
             onclick={runVisionExtract}
@@ -856,12 +1367,10 @@
           </button>
         </div>
       {:else}
-        <!-- Extraction complete — show Canvas + summary -->
         <div style="
           border: 1px solid rgba(139,92,246,0.3); border-radius: var(--radius-sm);
           background: rgba(139,92,246,0.05); overflow: hidden;
         ">
-          <!-- Summary bar -->
           <div style="
             padding: 10px 14px; background: rgba(139,92,246,0.1);
             border-bottom: 1px solid rgba(139,92,246,0.2);
@@ -874,7 +1383,6 @@
               </span>
             </div>
             <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-              <!-- Stats chips -->
               <span style="
                 font-size: 10px; font-weight: 600; padding: 2px 8px;
                 background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
@@ -902,13 +1410,10 @@
                   background: transparent; border: 1px solid var(--border);
                   color: var(--text3); cursor: pointer; font-family: inherit;
                 "
-              >
-                🔄 Ré-extraire
-              </button>
+              >🔄 Ré-extraire</button>
             </div>
           </div>
 
-          <!-- Blast Pattern Canvas -->
           <div style="padding: 12px 14px;">
             <BlastPatternCanvas
               firingSequence={firingSequence}
@@ -918,8 +1423,6 @@
               showAnimation={true}
               showExport={true}
             />
-
-            <!-- Model / extraction metadata -->
             <div style="
               margin-top: 8px; padding: 6px 10px; background: var(--card2);
               border-radius: var(--radius-sm); font-size: 10px; color: var(--text3);
@@ -940,12 +1443,15 @@
   </div>
   {/if}
 
-  <!-- SECTION 6: SÉCURITÉ -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 6: SÉCURITÉ + Recommandations ASP (Section G) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 5}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">⑥</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Mesures de sécurité</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Section G</span>
     </div>
     <div class="card-body">
 
@@ -960,7 +1466,44 @@
         </div>
       </div>
 
-      <!-- Checklist sécurité -->
+      <!-- Section G — Recommandations ASP (Oui/Non) -->
+      <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; margin-top: 4px;">
+        [Section G] Recommandations (bonnes pratiques)
+      </div>
+
+      {#each [
+        { key: 'camera_video' as const, label: '[G1] Caméra vidéo' },
+        { key: 'ecaillage_securite' as const, label: '[G2] Écaillage de sécurité' },
+        { key: 'detecteur_co_bnq' as const, label: '[G3] Détecteur résidentiel de CO (norme BNQ)' },
+      ] as item}
+        <div style="margin-bottom: 8px;">
+          <label style="display: block; margin-bottom: 6px; font-size: 12px;">{item.label}</label>
+          <div style="display: flex; gap: 8px;">
+            {#each ['Oui', 'Non'] as opt}
+              <button
+                onclick={() => { (form as any)[item.key] = (form as any)[item.key] === opt ? '' : opt; }}
+                style="
+                  flex: 1; padding: 8px; border-radius: var(--radius-sm);
+                  border: 1px solid {(form as any)[item.key] === opt
+                    ? (opt === 'Oui' ? 'var(--green)' : 'var(--red)')
+                    : 'var(--border)'};
+                  background: {(form as any)[item.key] === opt
+                    ? (opt === 'Oui' ? 'var(--green-dim)' : 'var(--red-dim)')
+                    : 'var(--card2)'};
+                  color: {(form as any)[item.key] === opt
+                    ? (opt === 'Oui' ? 'var(--green)' : 'var(--red)')
+                    : 'var(--text3)'};
+                  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+                "
+              >{opt === 'Oui' ? '✅ Oui' : '✕ Non'}</button>
+            {/each}
+          </div>
+        </div>
+      {/each}
+
+      <div class="divider"></div>
+
+      <!-- Checklist sécurité opérationnelle -->
       <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; margin-top: 4px;">
         Liste de vérification avant le tir
       </div>
@@ -1005,8 +1548,7 @@
           <input type="text" bind:value={g.poste} placeholder="Poste / position" style="flex: 1;">
           <button onclick={() => removeGardien(g.id)} style="
             background: var(--red-dim); border: 1px solid var(--red); color: var(--red);
-            border-radius: 6px; padding: 8px 10px; cursor: pointer; font-family: inherit;
-            flex-shrink: 0;
+            border-radius: 6px; padding: 8px 10px; cursor: pointer; font-family: inherit; flex-shrink: 0;
           ">✕</button>
         </div>
       {/each}
@@ -1018,61 +1560,83 @@
   </div>
   {/if}
 
-  <!-- SECTION 7: RÉSULTATS -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 7: RÉSULTATS (ASP Section H + I) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 6}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">⑦</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Résultats du tir</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Sections H+I</span>
     </div>
     <div class="card-body">
+
+      <!-- H1 + H2 -->
       <div class="form-row">
         <div class="form-group">
           <label>Heure de mise à feu <span style="color:var(--red)">*</span></label>
           <input type="time" bind:value={form.heure_mise_a_feu}>
         </div>
         <div class="form-group">
-          <label>Fragmentation</label>
-          <select bind:value={form.fragmentation}>
-            <option value="">— Sélectionner —</option>
-            <option>Excellente</option>
-            <option>Bonne</option>
-            <option>Acceptable</option>
-            <option>Mauvaise</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Projection max (m)</label>
-          <input type="number" step="0.1" bind:value={form.projection_max_m} placeholder="Distance max">
-        </div>
-        <div class="form-group">
-          <label>Vibrations PPV (mm/s)</label>
-          <input type="number" step="0.01" bind:value={form.vibrations_ppv} placeholder="ex: 2.45">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Bruit (dB)</label>
-          <input type="number" step="0.1" bind:value={form.bruit_db} placeholder="ex: 134">
-        </div>
-        <div class="form-group">
-          <label>Fumée (couleur)</label>
-          <select bind:value={form.fumee_couleur}>
-            <option value="">— Sélectionner —</option>
-            <option>Blanche</option>
-            <option>Grise</option>
-            <option>Noire</option>
-            <option>Orange (ratés)</option>
-            <option>Aucune visible</option>
-          </select>
+          <label>[H1] Concentration max. de CO</label>
+          <input type="text" bind:value={form.concentration_co_ppm} placeholder="ex: 25 ppm">
         </div>
       </div>
 
-      <!-- Ratés -->
+      <!-- H2: Fracturation telle qu'exigée -->
+      <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 6px; font-size: 12px;">[H2] Fracturation telle qu'exigée</label>
+        <div style="display: flex; gap: 8px;">
+          {#each ['Oui', 'Non'] as opt}
+            <button
+              onclick={() => form.fracturation_exigee = form.fracturation_exigee === opt ? '' : opt as any}
+              style="
+                flex: 1; padding: 8px; border-radius: var(--radius-sm);
+                border: 1px solid {form.fracturation_exigee === opt
+                  ? (opt === 'Oui' ? 'var(--green)' : 'var(--red)')
+                  : 'var(--border)'};
+                background: {form.fracturation_exigee === opt
+                  ? (opt === 'Oui' ? 'var(--green-dim)' : 'var(--red-dim)')
+                  : 'var(--card2)'};
+                color: {form.fracturation_exigee === opt
+                  ? (opt === 'Oui' ? 'var(--green)' : 'var(--red)')
+                  : 'var(--text3)'};
+                font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+              "
+            >{opt === 'Oui' ? '✅ Oui' : '✕ Non'}</button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- H3: Bris hors profil -->
+      <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 6px; font-size: 12px;">[H3] Bris hors profil</label>
+        <div style="display: flex; gap: 8px;">
+          {#each ['Oui', 'Non'] as opt}
+            <button
+              onclick={() => form.bris_hors_profil = form.bris_hors_profil === opt ? '' : opt as any}
+              style="
+                flex: 1; padding: 8px; border-radius: var(--radius-sm);
+                border: 1px solid {form.bris_hors_profil === opt
+                  ? (opt === 'Oui' ? 'var(--red)' : 'var(--green)')
+                  : 'var(--border)'};
+                background: {form.bris_hors_profil === opt
+                  ? (opt === 'Oui' ? 'var(--red-dim)' : 'var(--green-dim)')
+                  : 'var(--card2)'};
+                color: {form.bris_hors_profil === opt
+                  ? (opt === 'Oui' ? 'var(--red)' : 'var(--green)')
+                  : 'var(--text3)'};
+                font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+              "
+            >{opt === 'Oui' ? '⚠️ Oui' : '✅ Non'}</button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- H4: Trous ratés -->
       <div style="margin-top: 8px; margin-bottom: 8px;">
-        <label style="margin-bottom: 6px;">Trous ratés (misfire)?</label>
+        <label style="margin-bottom: 6px;">[H4] Trous ratés / canon / fond de trou ?</label>
         <div style="display: flex; gap: 8px;">
           {#each ['non', 'oui'] as opt}
             <button
@@ -1103,22 +1667,99 @@
           <div class="form-row cols1">
             <div class="form-group">
               <label>Description des ratés</label>
-              <textarea bind:value={form.description_rates} placeholder="Description détaillée des trous ratés..."></textarea>
+              <textarea bind:value={form.description_rates} placeholder="Description détaillée..."></textarea>
             </div>
           </div>
           <div class="form-row cols1">
             <div class="form-group">
               <label>Procédures appliquées</label>
-              <textarea bind:value={form.procedures_rates} placeholder="Procédures suivies pour les ratés..."></textarea>
+              <textarea bind:value={form.procedures_rates} placeholder="Procédures suivies..."></textarea>
             </div>
           </div>
         </div>
       {/if}
 
+      <!-- H5: Projection -->
+      <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 6px; font-size: 12px;">[H5] Projection</label>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          {#each ['Oui', 'Non'] as opt}
+            <button
+              onclick={() => form.projection = form.projection === opt ? '' : opt as any}
+              style="
+                flex: 1; padding: 8px; border-radius: var(--radius-sm);
+                border: 1px solid {form.projection === opt
+                  ? (opt === 'Oui' ? 'var(--red)' : 'var(--green)')
+                  : 'var(--border)'};
+                background: {form.projection === opt
+                  ? (opt === 'Oui' ? 'var(--red-dim)' : 'var(--green-dim)')
+                  : 'var(--card2)'};
+                color: {form.projection === opt
+                  ? (opt === 'Oui' ? 'var(--red)' : 'var(--green)')
+                  : 'var(--text3)'};
+                font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+              "
+            >{opt === 'Oui' ? '⚠️ Oui' : '✅ Non'}</button>
+          {/each}
+        </div>
+        {#if form.projection === 'Oui'}
+          <div style="
+            background: var(--red-dim); border: 1px solid rgba(231,76,60,0.3);
+            border-radius: var(--radius-sm); padding: 12px;
+          ">
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label>[H5a] Distance et grosseur des pierres</label>
+              <input type="text" bind:value={form.projection_distance_pierres}
+                placeholder="ex: 15m, pierres 5-20 cm">
+            </div>
+            <div class="form-group">
+              <label>[H5b] Description des dommages</label>
+              <textarea bind:value={form.description_dommages}
+                placeholder="Description des dommages causés..."></textarea>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Mesures supplémentaires -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fragmentation</label>
+          <select bind:value={form.fragmentation}>
+            <option value="">— Sélectionner —</option>
+            <option>Excellente</option>
+            <option>Bonne</option>
+            <option>Acceptable</option>
+            <option>Mauvaise</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Projection max (m)</label>
+          <input type="number" step="0.1" bind:value={form.projection_max_m} placeholder="Distance max">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Bruit (dB)</label>
+          <input type="number" step="0.1" bind:value={form.bruit_db} placeholder="ex: 134">
+        </div>
+        <div class="form-group">
+          <label>Fumée (couleur)</label>
+          <select bind:value={form.fumee_couleur}>
+            <option value="">— Sélectionner —</option>
+            <option>Blanche</option>
+            <option>Grise</option>
+            <option>Noire</option>
+            <option>Orange (ratés)</option>
+            <option>Aucune visible</option>
+          </select>
+        </div>
+      </div>
+
       <div class="form-row cols1">
         <div class="form-group">
           <label>Observations générales</label>
-          <textarea bind:value={form.resultats_generaux} placeholder="Observations globales du tir, résultat final..."></textarea>
+          <textarea bind:value={form.resultats_generaux} placeholder="Observations globales du tir..."></textarea>
         </div>
       </div>
 
@@ -1145,21 +1786,27 @@
 
       <div class="divider"></div>
 
-      <!-- Notes -->
+      <!-- Section I — Remarques -->
       <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-        Remarques et notes additionnelles
+        [Section I] Remarques
       </div>
-      <textarea bind:value={form.remarques} placeholder="Notes additionnelles, observations spéciales, informations importantes..." style="min-height: 100px;"></textarea>
+      <textarea bind:value={form.remarques}
+        oninput={() => onFieldChange('remarques')}
+        style="{fieldBorderStyle('remarques')} min-height: 80px;"
+        placeholder="Remarques, observations spéciales, informations importantes..."></textarea>
     </div>
   </div>
   {/if}
 
-  <!-- SECTION 8: SIGNATURE -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
+  <!-- SECTION 8: SIGNATURE (ASP Section J) -->
+  <!-- ────────────────────────────────────────────────────────────────────── -->
   {#if activeSection === 7}
   <div class="card">
     <div class="card-header">
       <div class="section-letter">⑧</div>
       <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Signature et certification</h3>
+      <span style="font-size: 10px; color: var(--text3);">ASP Section J</span>
     </div>
     <div class="card-body">
       <div style="
@@ -1172,7 +1819,7 @@
 
       <div class="form-row">
         <div class="form-group">
-          <label>Nom (certification)</label>
+          <label>[J1] Nom du boutefeu</label>
           <input type="text" value="{form.boutefeu_prenom} {form.boutefeu_nom}" readonly
             style="background: var(--surface); opacity: 0.8;">
         </div>
@@ -1183,7 +1830,7 @@
       </div>
 
       <div style="margin-top: 8px; margin-bottom: 6px;">
-        <label>Signature du boutefeu (dessiner ci-dessous)</label>
+        <label>[J2] Signature du boutefeu (dessiner ci-dessous)</label>
         <div style="
           border: 2px solid var(--border); border-radius: var(--radius-sm);
           background: var(--surface); overflow: hidden; position: relative;
@@ -1215,6 +1862,17 @@
           {/if}
         </div>
       </div>
+
+      <!-- Note légale ASP -->
+      <div style="
+        margin-top: 16px; padding: 10px 12px; background: var(--card2);
+        border-radius: var(--radius-sm); border-left: 3px solid rgba(79,110,247,0.5);
+        font-size: 11px; color: var(--text3); line-height: 1.5;
+      ">
+        📜 <strong style="color: var(--text2);">Exigence légale ASP Construction :</strong>
+        L'employeur doit conserver le journal de tir pendant une durée de <strong>3 ans</strong> et le rendre disponible en tout temps sur le lieu de travail.
+        <br>Référence : art. 4.7.10, annexe 2.2 — Code de sécurité pour les travaux de construction (RSST/RSSTM).
+      </div>
     </div>
   </div>
 
@@ -1223,13 +1881,28 @@
     <button onclick={saveAsDraft} class="btn btn-secondary" style="flex: 1;" disabled={saving}>
       💾 Sauvegarder brouillon
     </button>
-    <button onclick={saveAsComplete} class="btn btn-success" style="flex: 1;" disabled={saving}>
+    <button onclick={saveAsComplete} class="btn btn-success" style="flex: 1;" disabled={saving || !validationResult.valid}>
       ✅ Compléter et sauvegarder
     </button>
   </div>
+
+  <!-- Validation errors (if any) -->
+  {#if !validationResult.valid}
+    <div style="
+      margin-top: 10px; padding: 12px 14px; background: var(--red-dim);
+      border: 1px solid rgba(231,76,60,0.3); border-radius: var(--radius-sm);
+    ">
+      <div style="font-size: 12px; font-weight: 700; color: var(--red); margin-bottom: 6px;">
+        ❌ Champs obligatoires manquants
+      </div>
+      {#each validationResult.errors as err}
+        <div style="font-size: 12px; color: var(--text2); margin-bottom: 3px;">• {err}</div>
+      {/each}
+    </div>
+  {/if}
   {/if}
 
-  <!-- Navigation prev/next -->
+  <!-- ── Navigation prev/next ────────────────────────────────────────────── -->
   <div style="display: flex; justify-content: space-between; margin-top: 16px; margin-bottom: 8px;">
     {#if activeSection > 0}
       <button onclick={() => activeSection--} class="btn btn-secondary">
@@ -1247,6 +1920,51 @@
         ✅ Compléter
       </button>
     {/if}
+  </div>
+
+  <!-- ── Bottom status bar ──────────────────────────────────────────────── -->
+  <div style="
+    position: sticky; bottom: 0; left: 0; right: 0;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding: 10px 14px; margin: 8px -12px 0;
+    display: flex; align-items: center; gap: 10px;
+    z-index: 100;
+  ">
+    <!-- Progress bar -->
+    <div style="flex: 1; min-width: 0;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span style="font-size: 11px; color: var(--text3);">
+          {validationResult.filledCount}/{validationResult.totalCount} champs remplis
+        </span>
+        <span style="font-size: 11px; color: {validationResult.valid ? 'var(--green)' : (validationResult.errors.length > 0 ? 'var(--red)' : '#f59e0b')};">
+          {validationResult.valid ? '✅ Prêt à compléter' : validationResult.errors.length > 0 ? `❌ ${validationResult.errors.length} erreur(s)` : `⚠️ ${validationResult.warnings.length} avertissement(s)`}
+        </span>
+      </div>
+      <div style="height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;">
+        <div style="
+          height: 100%; border-radius: 2px;
+          width: {Math.round((validationResult.filledCount / validationResult.totalCount) * 100)}%;
+          background: {validationResult.valid ? 'var(--green)' : validationResult.errors.length > 0 ? 'var(--accent)' : '#f59e0b'};
+          transition: width 0.3s ease;
+        "></div>
+      </div>
+    </div>
+
+    <!-- Section status dots -->
+    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+      {#each validationResult.sectionStatus as sec, i}
+        <button
+          onclick={() => activeSection = i}
+          title="{sec.name}: {sec.status === 'error' ? `${sec.errorCount} erreur(s)` : sec.status === 'warning' ? `${sec.warningCount} avertissement(s)` : 'OK'}"
+          style="
+            width: 16px; height: 16px; border-radius: 50%; border: none; cursor: pointer;
+            background: {sec.status === 'error' ? 'var(--red)' : sec.status === 'warning' ? '#f59e0b' : 'var(--green)'};
+            opacity: {activeSection === i ? 1 : 0.5};
+            font-size: 8px; display: flex; align-items: center; justify-content: center;
+          "
+        ></button>
+      {/each}
+    </div>
   </div>
 
 </div>

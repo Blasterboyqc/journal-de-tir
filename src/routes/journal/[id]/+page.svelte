@@ -202,6 +202,12 @@
         >
           {importing ? '⏳ Analyse...' : '📄 Importer PDF'}
         </button>
+        <button onclick={() => goto(`/journal/${journal?.id}/print`)} class="btn btn-secondary btn-sm"
+          style="background: rgba(46,204,113,0.1); border-color: rgba(46,204,113,0.4); color: #2ecc71;"
+          title="Aperçu impression — format ASP Construction conforme"
+        >
+          🖨️ Impression ASP
+        </button>
         <button onclick={() => goto(`/journal/new?edit=${journal?.id}`)} class="btn btn-secondary btn-sm">
           ✏️ Modifier
         </button>
