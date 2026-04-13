@@ -33,9 +33,10 @@
   ];
 
   function isActive(path: string) {
-    const currentPath = $page.url.pathname;
-    if (path === '/') return currentPath === '/';
-    return currentPath.startsWith(path);
+    // Use $page.route.id which is base-path independent (e.g. '/', '/historique')
+    const routeId = $page.route.id ?? '';
+    if (path === '/') return routeId === '/';
+    return routeId.startsWith(path);
   }
 </script>
 
