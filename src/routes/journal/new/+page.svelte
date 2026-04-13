@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { saveJournal, getProfil, genNumeroTir, type ExplosifRow, type GardienRow, type FiringSequence } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
@@ -345,7 +346,7 @@
         updatedAt: now,
       });
       showToast(statut === 'complete' ? '✅ Journal complété et sauvegardé!' : '💾 Brouillon sauvegardé', 'success');
-      setTimeout(() => goto(`/journal/${id}`), 500);
+      setTimeout(() => goto(base + `/journal/${id}`), 500);
     } catch (err) {
       console.error(err);
       showToast('Erreur lors de la sauvegarde', 'error');

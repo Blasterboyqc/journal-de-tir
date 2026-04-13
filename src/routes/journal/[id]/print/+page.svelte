@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { getJournal, type JournalTir } from '$lib/db';
   import BlastPatternCanvas from '$lib/components/BlastPatternCanvas.svelte';
 
@@ -15,7 +16,7 @@
     if (j) {
       journal = j;
     } else {
-      goto('/historique');
+      goto(base + '/historique');
     }
     loading = false;
   });
@@ -57,7 +58,7 @@
   padding: 10px 16px; display: flex; align-items: center; gap: 10px;
 ">
   <button
-    onclick={() => goto(`/journal/${id}`)}
+    onclick={() => goto(base + `/journal/${id}`)}
     style="
       padding: 8px 14px; border-radius: 8px; cursor: pointer;
       background: transparent; border: 1px solid #555;

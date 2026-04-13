@@ -2,6 +2,7 @@
   import './layout.css';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { onMount } from 'svelte';
   import { toastMessage } from '$lib/stores/app';
   // Note: favicon is set via app.html
@@ -95,7 +96,7 @@
   ">
     {#each navItems as item}
       <button
-        onclick={() => goto(item.path)}
+        onclick={() => goto(base + item.path)}
         style="
           flex: 1;
           display: flex; flex-direction: column; align-items: center; justify-content: center;

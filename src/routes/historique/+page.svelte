@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { getJournaux, deleteJournal, type JournalTir } from '$lib/db';
   import { showToast } from '$lib/stores/app';
 
@@ -117,7 +118,7 @@
   </div>
 
   <!-- New journal button -->
-  <button onclick={() => goto('/journal/new')} class="btn btn-primary btn-full" style="margin-bottom: 12px;">
+  <button onclick={() => goto(base + '/journal/new')} class="btn btn-primary btn-full" style="margin-bottom: 12px;">
     ✏️ Nouveau journal de tir
   </button>
 
@@ -133,7 +134,7 @@
         <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
         <div style="font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Aucun journal</div>
         <div style="font-size: 13px; color: var(--text3); margin-bottom: 16px;">Créez votre premier journal de tir</div>
-        <button onclick={() => goto('/journal/new')} class="btn btn-primary">✏️ Créer maintenant</button>
+        <button onclick={() => goto(base + '/journal/new')} class="btn btn-primary">✏️ Créer maintenant</button>
       {:else}
         <div style="font-size: 13px; color: var(--text3);">Aucun résultat pour "{search}"</div>
       {/if}
@@ -147,7 +148,7 @@
       ">
         <!-- Card header (clickable) -->
         <button
-          onclick={() => goto(`/journal/${j.id}`)}
+          onclick={() => goto(base + `/journal/${j.id}`)}
           style="
             width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px;
             cursor: pointer; background: none; border: none; text-align: left; font-family: inherit;
@@ -176,7 +177,7 @@
           border-top: 1px solid var(--border); background: rgba(0,0,0,0.1);
         ">
           <button
-            onclick={() => goto(`/journal/${j.id}`)}
+            onclick={() => goto(base + `/journal/${j.id}`)}
             style="
               flex: 1; padding: 7px 10px; background: var(--card2); border: 1px solid var(--border);
               color: var(--text2); border-radius: 6px; font-size: 11px; font-weight: 600;

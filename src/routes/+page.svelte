@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { getJournaux, getProfil, type JournalTir } from '$lib/db';
 
   let journaux = $state<JournalTir[]>([]);
@@ -84,7 +85,7 @@
       Actions rapides
     </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-      <button onclick={() => goto('/journal/new')} style="
+      <button onclick={() => goto(base + '/journal/new')} style="
         background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
         padding: 16px; cursor: pointer; text-align: left; transition: all .15s;
         font-family: inherit;
@@ -93,7 +94,7 @@
         <div style="font-size: 13px; font-weight: 700;">Nouveau journal</div>
         <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">Créer un tir</div>
       </button>
-      <button onclick={() => goto('/historique')} style="
+      <button onclick={() => goto(base + '/historique')} style="
         background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
         padding: 16px; cursor: pointer; text-align: left; transition: all .15s;
         font-family: inherit;
@@ -102,7 +103,7 @@
         <div style="font-size: 13px; font-weight: 700; color: var(--text);">Historique</div>
         <div style="font-size: 11px; color: var(--text3); margin-top: 2px;">Voir tous les tirs</div>
       </button>
-      <button onclick={() => goto('/profil')} style="
+      <button onclick={() => goto(base + '/profil')} style="
         background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
         padding: 16px; cursor: pointer; text-align: left; transition: all .15s;
         font-family: inherit;
@@ -111,7 +112,7 @@
         <div style="font-size: 13px; font-weight: 700; color: var(--text);">Mon profil</div>
         <div style="font-size: 11px; color: var(--text3); margin-top: 2px;">{profil ? `${profil.prenom} ${profil.nom}` : 'Configurer'}</div>
       </button>
-      <button onclick={() => goto('/historique?export=true')} style="
+      <button onclick={() => goto(base + '/historique?export=true')} style="
         background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
         padding: 16px; cursor: pointer; text-align: left; transition: all .15s;
         font-family: inherit;
@@ -130,7 +131,7 @@
         Tirs récents
       </div>
       {#each recentJournaux as j}
-        <button onclick={() => goto(`/journal/${j.id}`)} style="
+        <button onclick={() => goto(base + `/journal/${j.id}`)} style="
           width: 100%; display: flex; align-items: center; gap: 12px;
           background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
           padding: 12px 14px; cursor: pointer; margin-bottom: 8px; text-align: left;
@@ -149,7 +150,7 @@
         </button>
       {/each}
       {#if journaux.length > 5}
-        <button onclick={() => goto('/historique')} style="
+        <button onclick={() => goto(base + '/historique')} style="
           width: 100%; padding: 10px; background: none; border: 1px dashed var(--border);
           border-radius: var(--radius-sm); color: var(--text3); font-size: 13px; cursor: pointer;
           font-family: inherit;
@@ -171,7 +172,7 @@
       <div style="font-size: 13px; color: var(--text3); margin-bottom: 16px;">
         Commencez par créer votre premier journal de tir
       </div>
-      <button onclick={() => goto('/journal/new')} class="btn btn-primary">
+      <button onclick={() => goto(base + '/journal/new')} class="btn btn-primary">
         ✏️ Créer mon premier journal
       </button>
     </div>

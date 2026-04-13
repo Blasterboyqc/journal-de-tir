@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { getJournal, updateJournal, deleteJournal, type JournalTir } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import { parseBlastPlanPDF } from '$lib/pdf-parser';
@@ -23,7 +24,7 @@
       journal = j;
     } else {
       showToast('Journal introuvable', 'error');
-      goto('/historique');
+      goto(base + '/historique');
     }
     loading = false;
   });
@@ -55,7 +56,7 @@
     deleting = true;
     await deleteJournal(id);
     showToast('🗑️ Journal supprimé', 'info');
-    goto('/historique');
+    goto(base + '/historique');
   }
 
   function getStatutBadge(statut: string) {
@@ -175,7 +176,7 @@
       padding: 14px; margin-bottom: 12px;
     ">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-        <button onclick={() => goto('/historique')} style="
+        <button onclick={() => goto(base + '/historique')} style="
           background: none; border: none; color: var(--text3); cursor: pointer;
           font-size: 12px; padding: 4px 0; font-family: inherit;
         ">← Retour</button>
@@ -202,13 +203,13 @@
         >
           {importing ? '⏳ Analyse...' : '📄 Importer PDF'}
         </button>
-        <button onclick={() => goto(`/journal/${journal?.id}/print`)} class="btn btn-secondary btn-sm"
+        <button onclick={() => goto(base + `/journal/${journal?.id}/print`)} class="btn btn-secondary btn-sm"
           style="background: rgba(46,204,113,0.1); border-color: rgba(46,204,113,0.4); color: #2ecc71;"
           title="Aperçu impression — format ASP Construction conforme"
         >
           🖨️ Impression ASP
         </button>
-        <button onclick={() => goto(`/journal/new?edit=${journal?.id}`)} class="btn btn-secondary btn-sm">
+        <button onclick={() => goto(base + `/journal/new?edit=${journal?.id}`)} class="btn btn-secondary btn-sm">
           ✏️ Modifier
         </button>
         {#if journal.statut === 'brouillon'}
