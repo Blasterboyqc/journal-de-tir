@@ -70,7 +70,7 @@ import{B as e,C as t,E as n,F as r,H as i,J as a,L as o,M as s,N as c,Q as l,R a
         background: var(--card); border: 2px dashed var(--border2); border-radius: 8px;
         text-align: center; cursor: pointer; font-size: 13px; color: var(--text3);
         transition: border-color 0.2s;
-      ">📷 Appuyez pour prendre ou sélectionner une photo <input type="file" accept="image/*" capture="environment" style="display: none;"/></label>`),ce=D(`<div style="
+      ">📷 Appuyez pour prendre ou sélectionner une photo <input type="file" accept="image/*" style="display: none;"/></label>`),ce=D(`<div style="
     background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
     padding: 12px; margin-bottom: 10px;
   "><div style="font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 8px;">📸 Importer une photo du plan de tir</div> <div style="font-size: 11px; color: var(--text3); margin-bottom: 10px; line-height: 1.5;">Prenez une photo de votre plan papier. L'IA Gemini extraira les trous et délais automatiquement.</div> <!> <!></div>`),le=D(`<button><div style="font-size: 18px; margin-bottom: 4px;"> </div> <div style="font-size: 12px;"> </div> <div style="font-size: 10px; color: var(--text3); font-weight: 400; margin-top: 1px;"> </div></button>`),ue=D(`<div><label for="tpl-rows" style="font-size: 10px; font-weight: 700; color: var(--text3); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px;">Rangées</label> <input id="tpl-rows" type="number" min="1" max="20" style="width: 100%; padding: 6px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit;"/></div>`),de=D(`<div style="
