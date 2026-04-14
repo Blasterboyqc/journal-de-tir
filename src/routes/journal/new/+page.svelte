@@ -111,6 +111,48 @@
 
   let previewDrillCanvasEl = $state<HTMLCanvasElement | null>(null);
 
+  // Engineer-style zone colors (matching DrillPatternEditor)
+  const PREVIEW_ZONE_COLORS = [
+    '#666666', // Zone 1 bouchon — slightly darker for print
+    '#009999', // Zone 2 inner ring — darker cyan
+    '#1a881a', // Zone 3 production — darker green
+    '#999900', // Zone 4 contour — darker yellow
+    '#aa6622', // Zone 5 trim/edge — darker brown-orange
+  ];
+  const PREVIEW_ZONE_LABELS = ['Bouchon', 'Anneau int.', 'Production', 'Contour', 'Bordure'];
+  const PREVIEW_ZONE_THRESHOLDS = [0.15, 0.30, 0.55, 0.80, 1.0];
+
+  function getPreviewZone(delayMs: number, maxDelay: number): number {
+    if (maxDelay <= 0) return 2;
+    const ratio = delayMs / maxDelay;
+    for (let i = 0; i < PREVIEW_ZONE_THRESHOLDS.length; i++) {
+      if (ratio <= PREVIEW_ZONE_THRESHOLDS[i]) return i;
+    }
+    return PREVIEW_ZONE_THRESHOLDS.length - 1;
+  }
+
+  function previewConvexHull(points: {x: number; y: number}[]): {x: number; y: number}[] {
+    if (points.length < 3) return points;
+    const sorted = [...points].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
+    const cross = (o: {x:number;y:number}, a: {x:number;y:number}, b: {x:number;y:number}) =>
+      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower: {x:number;y:number}[] = [];
+    for (const p of sorted) {
+      while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
+        lower.pop();
+      lower.push(p);
+    }
+    const upper: {x:number;y:number}[] = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const p = sorted[i];
+      while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
+        upper.pop();
+      upper.push(p);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+  }
+
   function renderDrillPatternLight(canvasEl: HTMLCanvasElement) {
     const f = $state.snapshot(form) as typeof form;
     if (!canvasEl || !f.drill_holes || f.drill_holes.length === 0) return;
@@ -119,12 +161,14 @@
     const h = canvasEl.height;
     const ctx = canvasEl.getContext('2d')!;
 
+    // White background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
     ctx.lineWidth = 0.5;
-    const GRID = 24;
+    const GRID = 28;
     for (let x = 0; x <= w; x += GRID) {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
     }
@@ -132,49 +176,98 @@
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
 
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = 'rgba(80,100,200,0.4)';
-    ctx.lineWidth = 1.5;
-    for (const conn of (f.drill_connections ?? [])) {
-      const from = f.drill_holes!.find((hh: any) => hh.id === conn.from);
-      const to = f.drill_holes!.find((hh: any) => hh.id === conn.to);
-      if (from && to) {
+    const maxDelay = Math.max(...f.drill_holes!.map((hh: any) => hh.delay_ms));
+    const HOLE_R = Math.max(7, Math.min(11, w / 55));
+    const BOUCHON_R = Math.max(5, HOLE_R - 2);
+
+    // ── Contour zone lines ────────────────────────────────────────────────
+    if (f.drill_holes!.length >= 3) {
+      const zoneGroups: {x: number; y: number}[][] = PREVIEW_ZONE_COLORS.map(() => []);
+      for (const hole of f.drill_holes!) {
+        const zone = getPreviewZone(hole.delay_ms, maxDelay);
+        zoneGroups[zone].push({ x: hole.x * w, y: hole.y * h });
+      }
+      ctx.setLineDash([6, 4]);
+      for (let zi = 0; zi < zoneGroups.length; zi++) {
+        const pts = zoneGroups[zi];
+        if (pts.length < 3) continue;
+        const hull = previewConvexHull(pts);
+        if (hull.length < 3) continue;
+        const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
+        const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
+        const expand = HOLE_R + 8;
+        const expanded = hull.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          const d = Math.hypot(dx, dy) || 1;
+          return { x: p.x + (dx / d) * expand, y: p.y + (dy / d) * expand };
+        });
         ctx.beginPath();
-        ctx.moveTo(from.x * w, from.y * h);
-        ctx.lineTo(to.x * w, to.y * h);
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        for (let i = 1; i < expanded.length; i++) ctx.lineTo(expanded[i].x, expanded[i].y);
+        ctx.closePath();
+        ctx.strokeStyle = PREVIEW_ZONE_COLORS[zi] + '88'; // 53% opacity
+        ctx.lineWidth = 1.5;
         ctx.stroke();
       }
+      ctx.setLineDash([]);
     }
-    ctx.setLineDash([]);
 
-    const HOLE_R = 18;
+    // ── Holes ─────────────────────────────────────────────────────────────
     for (const hole of f.drill_holes!) {
       const px = hole.x * w;
       const py = hole.y * h;
+      const zone = getPreviewZone(hole.delay_ms, maxDelay);
+      const zoneColor = PREVIEW_ZONE_COLORS[zone];
+      const r = zone === 0 ? BOUCHON_R : HOLE_R;
 
       ctx.beginPath();
-      ctx.arc(px, py, HOLE_R, 0, Math.PI * 2);
-      ctx.fillStyle = '#4f6ef7';
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fillStyle = zoneColor;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${hole.label.length > 2 ? '11' : '13'}px Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(hole.label, px, py);
-
+      // Delay number to the right (no "ms" suffix)
       if (hole.delay_ms >= 0) {
-        ctx.fillStyle = 'rgba(30,30,100,0.8)';
-        ctx.font = 'bold 10px Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${hole.delay_ms}ms`, px, py + HOLE_R + 3);
+        const labelStr = String(hole.delay_ms);
+        const fontSize = labelStr.length > 3 ? 8 : 9;
+        ctx.fillStyle = '#111111';
+        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelStr, px + r + 3, py);
       }
     }
+
+    // ── Legend ─────────────────────────────────────────────────────────────
+    const usedZones = new Set(f.drill_holes!.map((hh: any) => getPreviewZone(hh.delay_ms, maxDelay)));
+    const legendItems = [...usedZones].sort();
+    if (legendItems.length > 0) {
+      const legendX = w - 8;
+      const legendY = h - 10 - legendItems.length * 14;
+      const dotR = 4;
+      ctx.font = 'bold 9px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i < legendItems.length; i++) {
+        const zi = legendItems[i];
+        const ly = legendY + i * 14;
+        ctx.beginPath();
+        ctx.arc(legendX - 40, ly, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = PREVIEW_ZONE_COLORS[zi];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.fillStyle = '#222222';
+        ctx.fillText(PREVIEW_ZONE_LABELS[zi], legendX - 48, ly);
+      }
+    }
+
     ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
   }
 
   $effect(() => {
@@ -1210,29 +1303,6 @@
             style="width:100%;display:block;border:1px solid #eee;"
           ></canvas>
         </div>
-
-        <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:8px;">
-          <thead>
-            <tr style="background:#ddd;">
-              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">No</th>
-              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Étiq.</th>
-              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Délai (ms)</th>
-              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Pos. X</th>
-              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Pos. Y</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each form.drill_holes as hole}
-              <tr>
-                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.id}</td>
-                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.label}</td>
-                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.delay_ms} ms</td>
-                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{Math.round(hole.x * 100)}%</td>
-                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{Math.round(hole.y * 100)}%</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
 
       {:else if form.patron_forage_dataurl}
         <div style="border:1px solid #999;padding:8px;margin-bottom:8px;background:#fff;">

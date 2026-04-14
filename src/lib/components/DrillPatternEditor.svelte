@@ -107,18 +107,53 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CANVAS RENDERING
+  // CANVAS RENDERING — Engineer plan style
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const HOLE_R = 22;       // radius px (44px diameter — mobile-friendly)
-  const GRID_COLOR = 'rgba(255,255,255,0.07)';
-  const GRID_STEP = 24;
+  const GRID_COLOR = 'rgba(255,255,255,0.06)';
+  const GRID_STEP = 28;
   const BG_COLOR = '#0f1117';
-  const HOLE_FILL = '#4f6ef7';
-  const HOLE_SELECTED_FILL = '#6c84f8';
-  const HOLE_BORDER_SELECTED = '#ffffff';
-  const CONN_COLOR = 'rgba(160,168,204,0.5)';
   const MOVE_BORDER = '#f5c518'; // yellow for move mode
+
+  // Delay zone colors (engineer plan palette)
+  const ZONE_COLORS = [
+    '#888888', // Zone 1 (0–15%): bouchon / gray
+    '#00cccc', // Zone 2 (15–30%): inner ring / cyan
+    '#22aa22', // Zone 3 (30–55%): production / green
+    '#cccc00', // Zone 4 (55–80%): contour / yellow
+    '#cc8833', // Zone 5 (80–100%): trim/edge / brown-orange
+  ];
+
+  // Zone labels for legend
+  const ZONE_LABELS = [
+    'Bouchon',
+    'Anneau int.',
+    'Production',
+    'Contour',
+    'Bordure',
+  ];
+
+  // Zone thresholds (percentage of max delay)
+  const ZONE_THRESHOLDS = [0.15, 0.30, 0.55, 0.80, 1.0];
+
+  function getDelayZone(delayMs: number, maxDelay: number): number {
+    if (maxDelay <= 0) return 2; // default to production zone
+    const ratio = delayMs / maxDelay;
+    for (let i = 0; i < ZONE_THRESHOLDS.length; i++) {
+      if (ratio <= ZONE_THRESHOLDS[i]) return i;
+    }
+    return ZONE_THRESHOLDS.length - 1;
+  }
+
+  function getZoneColor(zone: number, isSelected: boolean, isMoving: boolean): string {
+    if (isMoving) return '#f5c518';
+    const base = ZONE_COLORS[zone] ?? ZONE_COLORS[2];
+    if (isSelected) {
+      // Brighten for selection
+      return base;
+    }
+    return base;
+  }
 
   function getCanvasSize(): { w: number; h: number } {
     if (!containerEl) return { w: 300, h: 200 };
@@ -140,12 +175,42 @@
     renderCanvas();
   }
 
+  // Convex hull for contour zone lines (Graham scan)
+  function convexHull(points: {x: number; y: number}[]): {x: number; y: number}[] {
+    if (points.length < 3) return points;
+    const sorted = [...points].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
+    const cross = (o: {x:number;y:number}, a: {x:number;y:number}, b: {x:number;y:number}) =>
+      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower: {x:number;y:number}[] = [];
+    for (const p of sorted) {
+      while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
+        lower.pop();
+      lower.push(p);
+    }
+    const upper: {x:number;y:number}[] = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const p = sorted[i];
+      while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
+        upper.pop();
+      upper.push(p);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+  }
+
   function renderCanvas() {
     if (!canvasEl) return;
     const ctx = canvasEl.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
     const w = canvasEl.width / dpr;
     const h = canvasEl.height / dpr;
+
+    // Compute max delay for zone calculation
+    const maxDelay = holes.length > 0 ? Math.max(...holes.map(h => h.delay_ms)) : 0;
+
+    // Hole radius — smaller, cleaner
+    const HOLE_R = Math.max(7, Math.min(11, w / 50));
+    const BOUCHON_R = Math.max(5, HOLE_R - 2);
 
     // Background
     ctx.fillStyle = BG_COLOR;
@@ -168,71 +233,127 @@
       ctx.strokeRect(2, 2, w - 4, h - 4);
     }
 
-    // Connection lines (draw under holes)
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = CONN_COLOR;
-    ctx.lineWidth = 1.5;
-    for (const conn of connections) {
-      const from = holes.find(h => h.id === conn.from);
-      const to = holes.find(h => h.id === conn.to);
-      if (from && to) {
+    // ── Contour zone lines (convex hulls per zone) ──────────────────────────
+    if (holes.length >= 3) {
+      // Group holes by zone
+      const zoneGroups: {x: number; y: number}[][] = ZONE_COLORS.map(() => []);
+      for (const hole of holes) {
+        const zone = getDelayZone(hole.delay_ms, maxDelay);
+        zoneGroups[zone].push({ x: hole.x * w, y: hole.y * h });
+      }
+
+      // Draw convex hull per zone that has >= 3 points
+      ctx.setLineDash([6, 4]);
+      for (let zi = 0; zi < zoneGroups.length; zi++) {
+        const pts = zoneGroups[zi];
+        if (pts.length < 3) continue;
+        const hull = convexHull(pts);
+        if (hull.length < 3) continue;
+        // Expand hull slightly outward from centroid
+        const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
+        const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
+        const expand = HOLE_R + 6;
+        const expanded = hull.map(p => {
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          const d = Math.hypot(dx, dy) || 1;
+          return { x: p.x + (dx / d) * expand, y: p.y + (dy / d) * expand };
+        });
+
         ctx.beginPath();
-        ctx.moveTo(from.x * w, from.y * h);
-        ctx.lineTo(to.x * w, to.y * h);
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        for (let i = 1; i < expanded.length; i++) {
+          ctx.lineTo(expanded[i].x, expanded[i].y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = ZONE_COLORS[zi] + '66'; // 40% opacity
+        ctx.lineWidth = 1.5;
         ctx.stroke();
       }
+      ctx.setLineDash([]);
     }
-    ctx.setLineDash([]);
 
-    // Holes
+    // ── Holes ───────────────────────────────────────────────────────────────
     for (const hole of holes) {
       const px = hole.x * w;
       const py = hole.y * h;
       const isSelected = hole.id === selectedHoleId || hole.id === movingHoleId;
       const isMoving = moveMode && hole.id === movingHoleId;
+      const zone = getDelayZone(hole.delay_ms, maxDelay);
+      const zoneColor = getZoneColor(zone, isSelected, isMoving);
+      const r = zone === 0 ? BOUCHON_R : HOLE_R;
 
       // Glow for selected
       if (isSelected) {
-        ctx.shadowColor = isMoving ? MOVE_BORDER : '#6c84f8';
-        ctx.shadowBlur = 16;
+        ctx.shadowColor = isMoving ? MOVE_BORDER : zoneColor;
+        ctx.shadowBlur = 14;
       }
 
       // Circle fill
       ctx.beginPath();
-      ctx.arc(px, py, HOLE_R, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? HOLE_SELECTED_FILL : HOLE_FILL;
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected
+        ? zoneColor  // same color, brighter via shadow
+        : isMoving
+          ? '#f5c518'
+          : zoneColor;
       ctx.fill();
 
       // Border
       ctx.strokeStyle = isMoving
         ? MOVE_BORDER
         : isSelected
-          ? HOLE_BORDER_SELECTED
-          : 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = isSelected ? 3 : 1.5;
+          ? '#ffffff'
+          : 'rgba(0,0,0,0.55)';
+      ctx.lineWidth = isSelected ? 2.5 : 1.2;
       ctx.stroke();
 
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
 
-      // Label (hole number) - bigger font
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${hole.label.length > 2 ? '12' : '14'}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(hole.label, px, py);
-
-      // Delay text below hole - bigger
+      // Delay label to the RIGHT of the hole (just the number, no "ms")
       if (hole.delay_ms >= 0) {
-        ctx.fillStyle = 'rgba(220,228,255,0.9)';
-        ctx.font = 'bold 11px system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${hole.delay_ms}ms`, px, py + HOLE_R + 4);
+        const labelStr = String(hole.delay_ms);
+        const fontSize = labelStr.length > 3 ? 9 : 10;
+        ctx.fillStyle = '#e8e8e8';
+        ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelStr, px + r + 4, py);
+      }
+    }
+
+    // ── Legend (bottom-right) ────────────────────────────────────────────────
+    if (holes.length > 0) {
+      // Determine which zones are actually used
+      const usedZones = new Set(holes.map(h => getDelayZone(h.delay_ms, maxDelay)));
+      const legendItems = [...usedZones].sort();
+
+      const legendX = w - 8;
+      const legendY = h - 10 - legendItems.length * 14;
+      const dotR = 4;
+
+      ctx.font = 'bold 9px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      for (let i = legendItems.length - 1; i >= 0; i--) {
+        const zi = legendItems[i];
+        const ly = legendY + i * 14;
+        ctx.beginPath();
+        ctx.arc(legendX - 40, ly, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = ZONE_COLORS[zi];
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(220,220,220,0.85)';
+        ctx.fillText(ZONE_LABELS[zi], legendX - 48, ly);
       }
     }
 
     ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
   }
 
   function renderToDataurl() {
@@ -258,8 +379,9 @@
     const { w, h } = getCanvasSize();
     const px = nx * w;
     const py = ny * h;
-    // Hit test with extra buffer for mobile touch
-    const HIT = HOLE_R + 10;
+    // Dynamic hit radius based on canvas size — bigger for mobile touch
+    const holeR = Math.max(7, Math.min(11, w / 50));
+    const HIT = holeR + 14;
     for (let i = holes.length - 1; i >= 0; i--) {
       const hx = holes[i].x * w;
       const hy = holes[i].y * h;
