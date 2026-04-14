@@ -18,6 +18,7 @@
   let saving = $state(false);
   let loading = $state(true);
   let editId = $state<number | null>(null);
+  let showPreview = $state(false);
 
   // The form data
   let form = $state<Omit<JournalTir, 'id'>>(emptyJournal());
@@ -88,38 +89,99 @@
 
   // ── Preview / Aperçu ───────────────────────────────────────────────────────
 
-  async function preview() {
-    if (saving) return;
-    saving = true;
-    try {
-      const snapshot = $state.snapshot(form);
-      const data: Omit<JournalTir, 'id'> = {
-        ...snapshot,
-        statut: snapshot.statut,
-        updatedAt: new Date().toISOString(),
-      };
-      let id: number;
-      if (editId) {
-        await updateJournal(editId, data);
-        id = editId;
-      } else {
-        id = await saveJournal(data);
-        editId = id;
-        // Update URL so future saves will edit this journal
-        const url = new URL(window.location.href);
-        url.searchParams.set('edit', String(id));
-        window.history.replaceState({}, '', url.toString());
-      }
-      showToast('💾 Brouillon sauvegardé', 'success');
-      goto(base + `/journal/${id}/print`);
-    } catch (err) {
-      console.error(err);
-      showToast('Erreur lors de la sauvegarde', 'error');
-      saving = false;
-    } finally {
-      saving = false;
-    }
+  function preview() {
+    showPreview = true;
   }
+
+  // ── Preview helpers ────────────────────────────────────────────────────────
+
+  function yesNo(val: boolean | null | undefined): string {
+    if (val === true) return 'Oui ☑';
+    if (val === false) return 'Non ☑';
+    return '☐ Oui  ☐ Non';
+  }
+
+  function formatDate(d: string) {
+    if (!d) return '—';
+    try {
+      const [y, m, day] = d.split('-');
+      return `${day} / ${m} / ${y}`;
+    } catch { return d; }
+  }
+
+  let previewDrillCanvasEl = $state<HTMLCanvasElement | null>(null);
+
+  function renderDrillPatternLight(canvasEl: HTMLCanvasElement) {
+    const f = $state.snapshot(form) as typeof form;
+    if (!canvasEl || !f.drill_holes || f.drill_holes.length === 0) return;
+
+    const w = canvasEl.width;
+    const h = canvasEl.height;
+    const ctx = canvasEl.getContext('2d')!;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 0.5;
+    const GRID = 24;
+    for (let x = 0; x <= w; x += GRID) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = 0; y <= h; y += GRID) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(80,100,200,0.4)';
+    ctx.lineWidth = 1.5;
+    for (const conn of (f.drill_connections ?? [])) {
+      const from = f.drill_holes!.find((hh: any) => hh.id === conn.from);
+      const to = f.drill_holes!.find((hh: any) => hh.id === conn.to);
+      if (from && to) {
+        ctx.beginPath();
+        ctx.moveTo(from.x * w, from.y * h);
+        ctx.lineTo(to.x * w, to.y * h);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+
+    const HOLE_R = 18;
+    for (const hole of f.drill_holes!) {
+      const px = hole.x * w;
+      const py = hole.y * h;
+
+      ctx.beginPath();
+      ctx.arc(px, py, HOLE_R, 0, Math.PI * 2);
+      ctx.fillStyle = '#4f6ef7';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${hole.label.length > 2 ? '11' : '13'}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(hole.label, px, py);
+
+      if (hole.delay_ms >= 0) {
+        ctx.fillStyle = 'rgba(30,30,100,0.8)';
+        ctx.font = 'bold 10px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${hole.delay_ms}ms`, px, py + HOLE_R + 3);
+      }
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  $effect(() => {
+    if (showPreview && previewDrillCanvasEl && form.drill_holes && form.drill_holes.length > 0) {
+      renderDrillPatternLight(previewDrillCanvasEl);
+    }
+  });
 
   // ── Oui/Non toggle helper ──────────────────────────────────────────────────
 
@@ -158,12 +220,10 @@
       </div>
       <button
         onclick={preview}
-        disabled={saving}
         style="
           padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700;
           background: var(--card2); color: var(--text2); border: 1px solid var(--border);
           cursor: pointer; font-family: inherit; white-space: nowrap;
-          opacity: {saving ? 0.6 : 1};
         "
       >👁️ Aperçu</button>
       <button
@@ -813,4 +873,536 @@
   {/if}
 
 </div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     INLINE PREVIEW OVERLAY — full-screen, no save required
+     ════════════════════════════════════════════════════════════════════════ -->
+{#if showPreview}
+<div style="
+  position: fixed; inset: 0; z-index: 9999; background: white; overflow-y: auto;
+  font-family: Arial, sans-serif; font-size: 12px; color: #000;
+">
+
+  <!-- Sticky top action bar -->
+  <div class="preview-actions" style="
+    position: sticky; top: 0; z-index: 10000; background: #f0f0f0;
+    border-bottom: 2px solid #999;
+    padding: 10px 16px; display: flex; gap: 10px; align-items: center;
+  ">
+    <button
+      onclick={() => showPreview = false}
+      style="
+        padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+        background: #444; color: #fff; border: none; cursor: pointer; font-family: inherit;
+      "
+    >← Fermer</button>
+    <button
+      onclick={() => window.print()}
+      style="
+        padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+        background: #4f6ef7; color: #fff; border: none; cursor: pointer; font-family: inherit;
+      "
+    >🖨️ Imprimer</button>
+    <span style="font-size: 11px; color: #666; margin-left: auto;">
+      Aperçu — {form.numero_tir} — Annexe 2.2
+    </span>
+  </div>
+
+  <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         PAGE 1 — Journal de tir par sautage
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div style="background: #fff; color: #000;">
+
+      <!-- Title -->
+      <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+        <div style="font-size: 14pt; font-weight: bold;">JOURNAL DE TIR PAR SAUTAGE</div>
+        <div style="font-size: 9pt; color: #444;">Annexe 2.2 Journal de tir (art. 4.7.10.) du Code de sécurité pour les travaux de construction</div>
+      </div>
+
+      <!-- En-tête -->
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:30%;">Nom de l'entreprise</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.nom_entreprise || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Adresse</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.adresse_entreprise || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Localisation du chantier</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.localisation_chantier || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Donneur d'ouvrage</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.donneur_ouvrage || ''}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Information sur le sautage -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">INFORMATION SUR LE SAUTAGE À L'EXPLOSIF</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:30%;">Localisation / chaînage</td>
+            <td style="border:1px solid #999;padding:4px 6px;" colspan="3">{form.localisation_chainage || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Date (jour/mois/an)</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{formatDate(form.date_tir)}</td>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Heure</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.heure_tir || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Nb volées quotidiennes</td>
+            <td style="border:1px solid #999;padding:4px 6px;" colspan="3">{form.nb_volees_quotidiennes || ''}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Conditions climatiques -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">CONDITIONS CLIMATIQUES</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:30%;">Température (°C)</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.temperature || ''}</td>
+            <td style="border:1px solid #999;padding:4px 6px;width:45%;">
+              {form.meteo_ensoleille ? '☑' : '☐'} Ensoleillé &nbsp;
+              {form.meteo_nuageux ? '☑' : '☐'} Nuageux &nbsp;
+              {form.meteo_pluie ? '☑' : '☐'} Pluie &nbsp;
+              {form.meteo_neige ? '☑' : '☐'} Neige
+            </td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Direction et vitesse des vents</td>
+            <td style="border:1px solid #999;padding:4px 6px;" colspan="2">{form.vent_direction_vitesse || ''}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Données sur le forage -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">DONNÉES SUR LE FORAGE</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:30%;">Nb trous et diamètre</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.nb_trous || ''} trous · {form.diametre_forage || ''} mm</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Fardeau / Espacement</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.fardeau || ''} m / {form.espacement || ''} m</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Profondeur moy. par rangée</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.profondeur_moy_rangee || ''} m</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Hauteur collet / Nature bourre</td>
+            <td style="border:1px solid #999;padding:4px 6px;">
+              {form.hauteur_collet || ''} m &nbsp;
+              {form.nature_bourre_pierre_nette ? '☑' : '☐'} pierre nette &nbsp;
+              {form.nature_bourre_concassee ? '☑' : '☐'} concassée
+            </td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Hauteur mort terrain</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.hauteur_mort_terrain || ''} m</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Vibrations — valeur à respecter</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.vibrations_valeur_respecter || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Vibrations — valeur obtenue</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.vibrations_valeur_obtenue || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Emplacement sismographes</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.vibrations_sismographes || ''}</td>
+          </tr>
+          {#if form.nb_trous_predecoupage}
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Nb trous pré-découpage</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.nb_trous_predecoupage}</td>
+          </tr>
+          {/if}
+          {#if form.type_pare_eclats}
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Pare-éclats</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.type_pare_eclats} · {form.pare_eclats_dimension || ''} · {form.pare_eclats_nombre || ''}</td>
+          </tr>
+          {/if}
+        </tbody>
+      </table>
+
+      <!-- Distance des structures -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">DISTANCE DES STRUCTURES LES PLUS PRÈS (EN MÈTRE)</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            {#each ['Bâtiment', 'Pont', 'Route', 'Ligne élec.', 'Sous-terr.'] as lbl}
+              <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;text-align:center;font-size:9pt;">{lbl}</td>
+            {/each}
+          </tr>
+          <tr>
+            {#each [form.dist_batiment, form.dist_pont, form.dist_route, form.dist_ligne_electrique, form.dist_structure_souterraine] as val}
+              <td style="border:1px solid #999;padding:4px 6px;text-align:center;">{val || ''}</td>
+            {/each}
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Explosifs -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">EXPLOSIFS (RÉF.: COLONNE DE CHARGE)</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:30%;">Type de détonateurs</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.type_detonateurs || ''}</td>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:20%;">Nb détonateurs</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.nb_detonateurs || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Quantité d'explosifs</td>
+            <td style="border:1px solid #999;padding:4px 6px;" colspan="3">{form.quantite_explosifs || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Type émulsion pompée</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.type_emulsion_pompee || ''}</td>
+            <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;">Volume roc / Facteur</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.volume_roc_m3 || ''} m³ / {form.facteur_chargement || ''} kg/m³</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Recommandations -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">RECOMMANDATIONS (BONNES PRATIQUES)</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;width:55%;">Caméra vidéo</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.camera_video)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Écaillage de sécurité</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.ecaillage_securite)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Détecteur résidentiel de CO selon la norme BNQ</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.detecteur_co_bnq)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Résultat du sautage -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">RÉSULTAT DU SAUTAGE</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;width:55%;">Concentration max. de CO</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.concentration_co_ppm || ''}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Fracturation telle qu'exigée</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.fracturation_exigee)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Bris hors profil</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.bris_hors_profil)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Trous ratés / canon / fond de trou</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{yesNo(form.trous_rates)}</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Projection</td>
+            <td style="border:1px solid #999;padding:4px 6px;">
+              {yesNo(form.projection)}
+              {#if form.projection === true}
+                {#if form.projection_details} — {form.projection_details}{/if}
+              {/if}
+            </td>
+          </tr>
+          {#if form.description_dommages}
+          <tr>
+            <td style="border:1px solid #999;padding:4px 6px;">Description des dommages</td>
+            <td style="border:1px solid #999;padding:4px 6px;">{form.description_dommages}</td>
+          </tr>
+          {/if}
+        </tbody>
+      </table>
+
+      <!-- Remarques -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">REMARQUES</div>
+      <div style="border:1px solid #999;border-top:none;padding:6px;min-height:50px;font-size:10pt;white-space:pre-wrap;">
+        {form.remarques || ''}
+      </div>
+
+      <!-- Signature -->
+      <div style="margin-top:16px;border:1px solid #999;padding:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;"><tbody>
+          <tr>
+            <td style="width:50%;padding-right:20px;">
+              <div style="font-weight:bold;margin-bottom:4px;">Nom du boutefeu:</div>
+              <div>{form.boutefeu_prenom || ''} {form.boutefeu_nom || ''}</div>
+              <div style="font-size:9pt;color:#555;">Cert. CSTC: {form.boutefeu_certificat || '—'} · Permis SQ: {form.boutefeu_permis_sq || '—'}</div>
+            </td>
+            <td style="width:50%;">
+              <div style="font-weight:bold;margin-bottom:4px;">Signature:</div>
+              <div style="height:40px;border-bottom:1px solid #000;"></div>
+            </td>
+          </tr>
+        </tbody></table>
+      </div>
+
+      <!-- Legal note -->
+      <div style="margin-top:10px;font-size:8pt;color:#555;border-top:1px solid #ccc;padding-top:6px;">
+        L'employeur doit conserver le journal de tir pendant une durée de 3 ans à compter de la date de la dernière intervention au chantier.
+      </div>
+
+    </div><!-- end preview page 1 -->
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         PAGE 2 — Plan de tir
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div style="page-break-before:always;break-before:page;padding-top:20px;border-top:3px solid #000;margin-top:40px;background:#fff;color:#000;">
+
+      <!-- Page 2 header -->
+      <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px;">
+        <div style="font-size:14pt;font-weight:bold;">PLAN DE TIR — REGISTRE DE FORAGE (TEL QUE RÉALISÉ)</div>
+        <div style="font-size:9pt;color:#444;">Annexe 2.2 — Page 2 · {form.numero_tir || ''} · {formatDate(form.date_tir)}</div>
+      </div>
+
+      <!-- 5 items -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">5 ITEMS À DOCUMENTER SUR LE PLAN</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          {#each [
+            { num: '1', label: 'Nombre et orientation des faces libres', val: form.plan_faces_libres },
+            { num: '2', label: 'Direction du tir', val: form.plan_direction_tir },
+            { num: '3', label: 'Identification de la séquence de tir (incluant les délais)', val: form.plan_sequence_identification },
+            { num: '4', label: 'Positionnement des structures les plus près (distance en mètre)', val: form.plan_structures_distance },
+            { num: '5', label: "Zone de tir (ligne d'avertissement «délimitation de la zone de chargement») et distances en mètre", val: form.plan_zone_tir },
+          ] as item}
+            <tr>
+              <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:5%;text-align:center;">{item.num}</td>
+              <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:35%;">{item.label}</td>
+              <td style="border:1px solid #999;padding:4px 6px;white-space:pre-wrap;">{item.val || ''}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+
+      <!-- Drill pattern -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:12px;">PATRON DE FORAGE</div>
+
+      {#if form.drill_holes && form.drill_holes.length > 0}
+        <div style="border:1px solid #999;padding:8px;margin-bottom:8px;background:#fff;">
+          <canvas
+            bind:this={previewDrillCanvasEl}
+            width="720"
+            height="480"
+            style="width:100%;display:block;border:1px solid #eee;"
+          ></canvas>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:8px;">
+          <thead>
+            <tr style="background:#ddd;">
+              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">No</th>
+              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Étiq.</th>
+              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Délai (ms)</th>
+              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Pos. X</th>
+              <th style="border:1px solid #999;padding:3px 5px;text-align:center;">Pos. Y</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each form.drill_holes as hole}
+              <tr>
+                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.id}</td>
+                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.label}</td>
+                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{hole.delay_ms} ms</td>
+                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{Math.round(hole.x * 100)}%</td>
+                <td style="border:1px solid #999;padding:3px 5px;text-align:center;">{Math.round(hole.y * 100)}%</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+
+      {:else if form.patron_forage_dataurl}
+        <div style="border:1px solid #999;padding:8px;margin-bottom:8px;background:#fff;">
+          <img
+            src={form.patron_forage_dataurl}
+            alt="Patron de forage"
+            style="width:100%;display:block;"
+          >
+        </div>
+      {:else}
+        <div style="border:1px solid #ddd;padding:20px;text-align:center;color:#999;font-size:10pt;font-style:italic;margin-bottom:8px;">
+          Aucun patron de forage enregistré
+        </div>
+      {/if}
+
+      <!-- Signature for page 2 -->
+      <div style="margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;"><tbody>
+          <tr>
+            <td style="width:50%;padding-right:20px;">
+              <div style="font-weight:bold;margin-bottom:4px;">Nom du boutefeu:</div>
+              <div>{form.boutefeu_prenom || ''} {form.boutefeu_nom || ''}</div>
+            </td>
+            <td style="width:50%;">
+              <div style="font-weight:bold;margin-bottom:4px;">Signature:</div>
+              <div style="height:30px;border-bottom:1px solid #000;"></div>
+            </td>
+          </tr>
+        </tbody></table>
+      </div>
+
+    </div><!-- end preview page 2 -->
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         PAGE 3 — Profil de tir
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div style="page-break-before:always;break-before:page;padding-top:20px;border-top:3px solid #000;margin-top:40px;background:#fff;color:#000;">
+
+      <!-- Page 3 header -->
+      <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px;">
+        <div style="font-size:14pt;font-weight:bold;">PROFIL DE TIR — VUE EN ÉLÉVATION DU SAUTAGE PAR TIR</div>
+        <div style="font-size:9pt;color:#444;">Annexe 2.2 — Page 3 · {form.numero_tir || ''} · {formatDate(form.date_tir)}</div>
+      </div>
+
+      <!-- 3 required items -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:8px;">INFORMATIONS REQUISES</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:10pt;">
+        <tbody>
+          {#each [
+            { num: '1', label: 'Description des explosifs par trou (dimensions, nombre et poids)', val: form.profil_description_explosifs },
+            { num: '2', label: 'Description des agents de sautage (poids / trou en kg)', val: form.profil_agents_sautage },
+            { num: '3', label: 'Identification des raccordements / délai milliseconde (fond du trou et à la surface)', val: form.profil_raccordements_delais },
+          ] as item}
+            <tr>
+              <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:5%;text-align:center;">{item.num}</td>
+              <td style="border:1px solid #999;padding:4px 6px;background:#f5f5f5;font-weight:bold;width:35%;">{item.label}</td>
+              <td style="border:1px solid #999;padding:4px 6px;white-space:pre-wrap;">{item.val || ''}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+
+      <!-- 6 borehole schemas -->
+      <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:12px;">SCHÉMAS DE SAUTAGE</div>
+      <div style="font-size:8pt;color:#666;margin-bottom:10px;font-style:italic;padding-top:4px;">
+        Disposition des trous de mine / Séquence de mise à feu
+      </div>
+
+      {#if form.schemas && form.schemas.length > 0}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          {#each form.schemas as schema, i}
+            <div style="border:1px solid #999;font-size:9pt;break-inside:avoid;">
+              <div style="background:#e8e8e8;border-bottom:1px solid #999;padding:4px 6px;font-size:8pt;font-weight:bold;color:#333;">
+                Schéma #{i + 1} — Disposition des trous de mine / Séquence de mise à feu
+              </div>
+              <div style="padding:6px 8px;">
+
+                <div style="margin-bottom:5px;">
+                  <div style="font-size:7.5pt;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">Profondeur des forages: SOL/ROC (incluant mort terrain)</div>
+                  <div style="font-size:9pt;color:#000;min-height:14px;">{schema.profondeur_sol_roc || '—'}</div>
+                </div>
+
+                <div style="margin-bottom:5px;">
+                  <div style="font-size:7.5pt;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">Chargement-Type</div>
+                  <div style="font-size:9pt;color:#000;min-height:14px;">{schema.chargement_type || '—'}</div>
+                </div>
+
+                <div style="display:flex;gap:6px;margin:6px 0;">
+                  <div style="flex:1;display:flex;flex-direction:column;justify-content:space-between;min-height:100px;font-size:8pt;color:#444;">
+                    {#if schema.couches}
+                      {#each schema.couches.split('\n').filter((l: string) => l.trim()) as line}
+                        <div style="padding:1px 0;">• {line}</div>
+                      {/each}
+                    {/if}
+                  </div>
+                  <div style="width:44px;flex-shrink:0;border:1.5px solid #666;border-top:none;border-radius:0 0 3px 3px;min-height:100px;position:relative;background:linear-gradient(to bottom, #e8f0ff 0%, #e0eaff 30%, #fff3e0 70%, #ffeedd 100%);overflow:hidden;">
+                    <div style="position:absolute;top:0;left:0;right:0;text-align:center;font-size:7pt;font-weight:bold;color:#555;padding:2px 0;border-bottom:1px dashed #aaa;background:rgba(255,255,255,0.6);text-transform:uppercase;">SOL</div>
+                    <div style="position:absolute;left:0;right:0;top:30%;border-top:1px solid rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:center;">
+                      <span style="font-size:7pt;color:#555;background:#fff;padding:0 2px;">ROC</span>
+                    </div>
+                    <div style="position:absolute;left:0;right:0;top:80%;border-top:2px solid rgba(200,50,50,0.6);display:flex;align-items:center;justify-content:center;">
+                      <span style="font-size:7pt;font-weight:bold;color:#cc2222;background:#fff;padding:0 2px;">FOND</span>
+                    </div>
+                    <div style="position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:linear-gradient(to bottom, #4f6ef7 0%, #4f6ef7 78%, #cc2222 78%, #cc2222 100%);transform:translateX(-50%);opacity:0.5;"></div>
+                  </div>
+                </div>
+
+                <div style="color:#cc2222;font-size:8pt;font-weight:bold;text-align:center;margin:4px 0;">— FRONT DE TAILLE —</div>
+
+                <div style="margin-bottom:5px;">
+                  <div style="font-size:7.5pt;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">Bourre / Espaceurs</div>
+                  <div style="font-size:9pt;color:#000;min-height:14px;">{schema.bourre || '—'}</div>
+                </div>
+
+                <div style="margin-bottom:5px;">
+                  <div style="font-size:7.5pt;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">Explosifs / Amorces</div>
+                  <div style="font-size:9pt;color:#000;min-height:14px;">{schema.explosifs_amorces || '—'}</div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:4px;border-top:1px solid #ccc;padding-top:5px;margin-top:5px;font-size:8.5pt;">
+                  <span style="font-weight:bold;color:#444;">Trous n°:</span>
+                  <span>{schema.trous_de || '___'}</span>
+                  <span> à </span>
+                  <span>{schema.trous_a || '___'}</span>
+                </div>
+
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div style="border:1px solid #ddd;padding:20px;text-align:center;color:#999;font-size:10pt;font-style:italic;margin-bottom:8px;">
+          Aucun schéma enregistré
+        </div>
+      {/if}
+
+      <!-- Signature for page 3 -->
+      <div style="margin-top:20px;border-top:1px solid #ccc;padding-top:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10pt;"><tbody>
+          <tr>
+            <td style="width:50%;padding-right:20px;">
+              <div style="font-weight:bold;margin-bottom:4px;">Nom du boutefeu:</div>
+              <div>{form.boutefeu_prenom || ''} {form.boutefeu_nom || ''}</div>
+              <div style="font-size:9pt;color:#555;">Cert. CSTC: {form.boutefeu_certificat || '—'} · Permis SQ: {form.boutefeu_permis_sq || '—'}</div>
+            </td>
+            <td style="width:50%;">
+              <div style="font-weight:bold;margin-bottom:4px;">Signature:</div>
+              <div style="height:40px;border-bottom:1px solid #000;"></div>
+            </td>
+          </tr>
+        </tbody></table>
+      </div>
+
+      <!-- Legal note -->
+      <div style="margin-top:10px;font-size:8pt;color:#555;border-top:1px solid #ccc;padding-top:6px;">
+        L'employeur doit conserver le journal de tir pendant une durée de 3 ans à compter de la date de la dernière intervention au chantier.
+      </div>
+
+    </div><!-- end preview page 3 -->
+
+  </div><!-- end max-width wrapper -->
+</div><!-- end overlay -->
 {/if}
+
+{/if}
+
+<style>
+  @media print {
+    .preview-actions {
+      display: none !important;
+    }
+  }
+</style>

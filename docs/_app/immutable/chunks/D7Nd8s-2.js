@@ -1,1 +1,0 @@
-import{K as e}from"./Dpq0MdiO.js";import"./WDKuxHxz.js";e(!0);var t=e(null);function n(e,n=`success`){t.set({text:e,type:n}),setTimeout(()=>t.set(null),3500)}export{t as n,n as t};

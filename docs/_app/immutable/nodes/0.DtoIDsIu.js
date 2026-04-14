@@ -1,4 +1,4 @@
-import{n as e}from"../chunks/Bq1CAHEh.js";import{C as t,E as n,G as r,H as i,I as a,J as o,L as s,M as c,Q as l,V as u,W as d,Y as f,_ as p,d as m,f as h,g,h as _,j as v,m as y,r as b,v as x,w as S,x as C,y as w,z as T}from"../chunks/Dpq0MdiO.js";import{c as E,t as D}from"../chunks/WpKzcXwa.js";import"../chunks/CT0T0Gak.js";import{t as O}from"../chunks/DFtd6a3Z.js";import"../chunks/DlWxjNBi.js";import{n as k}from"../chunks/D7Nd8s-2.js";var A=e({prerender:()=>!1,ssr:()=>!1}),j=C(`<button><span style="font-size: 20px;"> </span> <span style="font-size: 9px; white-space: nowrap;"> </span></button>`),M=C(`<div> </div>`),N=C(`<div id="app" style="display:flex;flex-direction:column;height:100dvh;height:100vh;background:var(--bg);"><header style="
+import{n as e}from"../chunks/Bq1CAHEh.js";import{$ as t,C as n,E as r,G as i,H as a,I as o,J as s,L as c,M as l,V as u,W as d,Y as f,_ as p,d as m,f as h,g,h as _,j as v,m as y,r as b,v as x,w as S,x as C,y as w,z as T}from"../chunks/J7tXCfCn.js";import{c as E,t as D}from"../chunks/uvAB5v4_.js";import"../chunks/CT0T0Gak.js";import{t as O}from"../chunks/BYXtGcUv.js";import"../chunks/Bz2VwWNP.js";import{n as k}from"../chunks/CjOZp5Y3.js";var A=e({prerender:()=>!1,ssr:()=>!1}),j=C(`<button><span style="font-size: 20px;"> </span> <span style="font-size: 9px; white-space: nowrap;"> </span></button>`),M=C(`<div> </div>`),N=C(`<div id="app" style="display:flex;flex-direction:column;height:100dvh;height:100vh;background:var(--bg);"><header style="
     height: 56px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -26,21 +26,21 @@ import{n as e}from"../chunks/Bq1CAHEh.js";import{C as t,E as n,G as r,H as i,I a
     padding-bottom: var(--safe-bottom);
     z-index: 100;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
-  "></nav> <!></div>`);function P(e,t){f(t,!0);let C=()=>r(O,`$page`,P),A=()=>r(k,`$toastMessage`,P),[P,F]=d(),I=i(!0);b(()=>{u(I,localStorage.getItem(`theme`)!==`light`),L(n(I))});function L(e){document.documentElement.setAttribute(`data-theme`,e?`dark`:`light`),localStorage.setItem(`theme`,e?`dark`:`light`)}function R(){u(I,!n(I)),L(n(I))}let z=[{path:`/`,icon:`🏠`,label:`Tableau de bord`},{path:`/journal/new`,icon:`✏️`,label:`Nouveau tir`},{path:`/historique`,icon:`📂`,label:`Historique`},{path:`/profil`,icon:`👷`,label:`Profil`}];function B(e){let t=C().route.id??``;return e===`/`?t===`/`:t.startsWith(e)}var V=N();h(`12qhfyh`,e=>{v(()=>{a.title=`Journal de Tir`})});var H=s(V),U=T(s(H),4),W=s(U,!0);l(U),l(H);var G=T(H,2);y(s(G),()=>t.children),l(G);var K=T(G,2);_(K,21,()=>z,g,(e,t)=>{var r=j(),i=s(r),a=s(i,!0);l(i);var o=T(i,2),u=s(o,!0);l(o),l(r),c((e,i)=>{m(r,`
+  "></nav> <!></div>`);function P(e,n){f(n,!0);let C=()=>i(O,`$page`,P),A=()=>i(k,`$toastMessage`,P),[P,F]=d(),I=a(!0);b(()=>{u(I,localStorage.getItem(`theme`)!==`light`),L(r(I))});function L(e){document.documentElement.setAttribute(`data-theme`,e?`dark`:`light`),localStorage.setItem(`theme`,e?`dark`:`light`)}function R(){u(I,!r(I)),L(r(I))}let z=[{path:`/`,icon:`🏠`,label:`Tableau de bord`},{path:`/journal/new`,icon:`✏️`,label:`Nouveau tir`},{path:`/historique`,icon:`📂`,label:`Historique`},{path:`/profil`,icon:`👷`,label:`Profil`}];function B(e){let t=C().route.id??``;return e===`/`?t===`/`:t.startsWith(e)}var V=N();h(`12qhfyh`,e=>{v(()=>{o.title=`Journal de Tir`})});var H=c(V),U=T(c(H),4),W=c(U,!0);t(U),t(H);var G=T(H,2);y(c(G),()=>n.children),t(G);var K=T(G,2);_(K,21,()=>z,g,(e,n)=>{var i=j(),a=c(i),o=c(a,!0);t(a);var s=T(a,2),u=c(s,!0);t(s),t(i),l((e,t)=>{m(i,`
           flex: 1;
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           gap: 3px; cursor: pointer; border: none; background: none;
           color: ${e??``};
           font-size: 10px; font-weight: 600; padding: 8px 4px;
           text-transform: uppercase; letter-spacing: 0.3px;
-          border-top: 2px solid ${i??``};
+          border-top: 2px solid ${t??``};
           transition: all .15s;
           font-family: inherit;
-        `),x(a,n(t).icon),x(u,n(t).label)},[()=>B(n(t).path)?`var(--accent2)`:`var(--text3)`,()=>B(n(t).path)?`var(--accent)`:`transparent`]),S(`click`,r,()=>D(E+n(t).path)),w(e,r)}),l(K);var q=T(K,2),J=e=>{var t=M(),n=s(t,!0);l(t),c(()=>{m(t,`
+        `),x(o,r(n).icon),x(u,r(n).label)},[()=>B(r(n).path)?`var(--accent2)`:`var(--text3)`,()=>B(r(n).path)?`var(--accent)`:`transparent`]),S(`click`,i,()=>D(E+r(n).path)),w(e,i)}),t(K);var q=T(K,2),J=e=>{var n=M(),r=c(n,!0);t(n),l(()=>{m(n,`
       position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
       background: ${A().type===`success`?`var(--green)`:A().type===`error`?`var(--red)`:`var(--accent)`};
       color: #fff; padding: 10px 20px; border-radius: 20px;
       font-size: 13px; font-weight: 600; z-index: 1000;
       box-shadow: 0 4px 20px rgba(0,0,0,0.4);
       animation: fadeInDown 0.2s ease;
-    `),x(n,A().text)}),w(e,t)};p(q,e=>{A()&&e(J)}),l(V),c(()=>x(W,n(I)?`☀️`:`🌙`)),S(`click`,U,R),w(e,V),o(),F()}t([`click`]);export{P as component,A as universal};
+    `),x(r,A().text)}),w(e,n)};p(q,e=>{A()&&e(J)}),t(V),l(()=>x(W,r(I)?`☀️`:`🌙`)),S(`click`,U,R),w(e,V),s(),F()}n([`click`]);export{P as component,A as universal};
