@@ -6,6 +6,7 @@
   import { getJournal, updateJournal, deleteJournal, type JournalTir } from '$lib/db';
   import { showToast } from '$lib/stores/app';
   import BoreholeDiagram from '$lib/components/BoreholeDiagram.svelte';
+  import DrillPatternEditor from '$lib/components/DrillPatternEditor.svelte';
 
   let journal = $state<JournalTir | null>(null);
   let loading = $state(true);
@@ -444,8 +445,20 @@
       </div>
     {/each}
 
-    <!-- Drawing -->
-    {#if journal.patron_forage_dataurl}
+    <!-- Drill Pattern / Drawing -->
+    {#if journal.drill_holes && journal.drill_holes.length > 0}
+      <div class="card" style="margin-top: 12px;">
+        <div style="padding: 8px 12px 4px; font-size: 10px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border);">Patron de forage</div>
+        <div style="padding: 10px 12px;">
+          <DrillPatternEditor
+            holes={journal.drill_holes}
+            connections={journal.drill_connections ?? []}
+            dataurl={journal.patron_forage_dataurl}
+            readonly={true}
+          />
+        </div>
+      </div>
+    {:else if journal.patron_forage_dataurl}
       <div class="card" style="margin-top: 12px;">
         <div style="padding: 8px 12px 4px; font-size: 10px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border);">Patron de forage (dessin)</div>
         <div style="padding: 10px 12px;">
@@ -458,7 +471,7 @@
       </div>
     {:else}
       <div style="text-align: center; padding: 24px; color: var(--text3); font-size: 13px;">
-        Aucun dessin du patron de forage
+        Aucun patron de forage
       </div>
     {/if}
 

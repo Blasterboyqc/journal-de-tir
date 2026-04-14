@@ -9,7 +9,7 @@
     type JournalTir
   } from '$lib/db';
   import { showToast } from '$lib/stores/app';
-  import DrawingCanvas from '$lib/components/DrawingCanvas.svelte';
+  import DrillPatternEditor from '$lib/components/DrillPatternEditor.svelte';
   import BoreholeDiagram from '$lib/components/BoreholeDiagram.svelte';
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -666,13 +666,17 @@
     <div class="divider"></div>
 
     <div style="font-size: 11px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-      Patron de forage — Dessin libre
+      Patron de forage — Éditeur interactif
     </div>
     <div style="font-size: 11px; color: var(--text3); margin-bottom: 10px;">
-      Dessinez le patron de forage (grille en fond). Utilisez les outils ci-dessous.
+      Placez les trous manuellement, utilisez un gabarit, ou importez une photo avec l'IA.
     </div>
 
-    <DrawingCanvas bind:dataurl={form.patron_forage_dataurl} />
+    <DrillPatternEditor
+      bind:holes={form.drill_holes}
+      bind:connections={form.drill_connections}
+      bind:dataurl={form.patron_forage_dataurl}
+    />
 
     <div style="margin-top: 16px; margin-bottom: 16px;">
       <button onclick={() => save(false)} disabled={saving} class="btn btn-primary btn-full">

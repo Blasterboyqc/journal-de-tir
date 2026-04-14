@@ -16,6 +16,7 @@
     employeur: '',
     chantier_actuel: '',
     telephone: '',
+    gemini_api_key: '',
     updatedAt: '',
   });
 
@@ -145,6 +146,33 @@
         placeholder="ex: Autoroute 40, km 23 — Montréal"
       >
     </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Clé API Gemini -->
+  <div style="font-size: 11px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+    IA — Clé API Gemini (optionnel)
+  </div>
+
+  <div class="form-row cols1" style="margin-bottom: 10px;">
+    <div class="form-group">
+      <label for="gemini_key">Clé API Google Gemini</label>
+      <input
+        id="gemini_key"
+        type="password"
+        bind:value={form.gemini_api_key}
+        placeholder="AIzaSy..."
+        autocomplete="off"
+      >
+    </div>
+  </div>
+  <div style="
+    background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 10px; margin-bottom: 16px;
+    font-size: 11px; color: var(--text3); line-height: 1.5;
+  ">
+    🤖 Utilisée pour l'importation photo IA dans l'éditeur de patron de forage. Obtenez votre clé sur <strong style="color: var(--accent2);">aistudio.google.com</strong>. Stockée localement uniquement.
   </div>
 
   <!-- Info note -->

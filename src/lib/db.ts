@@ -1,5 +1,20 @@
 import Dexie, { type Table } from 'dexie';
 
+// ─── Drill Pattern Types ───────────────────────────────────────────────────────
+
+export interface DrillHole {
+  id: number;
+  x: number;  // 0-1 normalized position
+  y: number;  // 0-1 normalized position
+  delay_ms: number;
+  label: string;  // hole number or custom label
+}
+
+export interface DrillConnection {
+  from: number;  // hole id
+  to: number;    // hole id
+}
+
 // ─── Profil Boutefeu ──────────────────────────────────────────────────────────
 
 export interface ProfilBoutefeu {
@@ -12,6 +27,7 @@ export interface ProfilBoutefeu {
   employeur: string;
   chantier_actuel: string;
   telephone: string;
+  gemini_api_key?: string;  // Optional Gemini AI API key for photo import
   updatedAt: string;
 }
 
@@ -125,7 +141,11 @@ export interface JournalTir {
   plan_structures_distance: string;
   plan_zone_tir: string;
 
-  // Dessin libre (canvas data URL)
+  // Patron de forage structuré (holes + connections)
+  drill_holes: DrillHole[];
+  drill_connections: DrillConnection[];
+
+  // Dessin libre (canvas data URL — rendered snapshot for PDF/print)
   patron_forage_dataurl: string;
 
   // ── PAGE 3: Profil de tir ─────────────────────────────────────────────────
@@ -175,6 +195,11 @@ class JournalDB extends Dexie {
     });
     // Version 6: complete simplification — matching 3-page government form
     this.version(6).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, localisation_chantier, numero_tir, createdAt'
+    });
+    // Version 7: add structured drill pattern data (drill_holes, drill_connections)
+    this.version(7).stores({
       profil: '++id',
       journaux: '++id, statut, date_tir, localisation_chantier, numero_tir, createdAt'
     });
@@ -320,6 +345,8 @@ export function emptyJournal(profil?: ProfilBoutefeu | null): Omit<JournalTir, '
     plan_sequence_identification: '',
     plan_structures_distance: '',
     plan_zone_tir: '',
+    drill_holes: [],
+    drill_connections: [],
     patron_forage_dataurl: '',
 
     profil_description_explosifs: '',
