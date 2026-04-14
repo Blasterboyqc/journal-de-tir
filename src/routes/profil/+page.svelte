@@ -20,12 +20,24 @@
   });
 
   onMount(async () => {
-    const profil = await getProfil();
-    if (profil) {
-      const { id: _, ...rest } = profil;
-      form = rest;
+    try {
+      const profil = await getProfil();
+      if (profil) {
+        const { id: _, ...rest } = profil;
+        form = rest;
+      }
+    } catch (err) {
+      console.error('DB error:', err);
+      // If it's a version error, offer to reset
+      if (String(err).includes('version') || String(err).includes('upgrade')) {
+        if (confirm('La base de données doit être réinitialisée pour cette mise à jour. Vos données seront perdues. Continuer?')) {
+          await import('dexie').then(({ default: Dexie }) => Dexie.delete('JournalDeTirDB'));
+          location.reload();
+        }
+      }
+    } finally {
+      loading = false;
     }
-    loading = false;
   });
 
   async function save() {

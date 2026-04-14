@@ -25,25 +25,37 @@
   // ── Mount ──────────────────────────────────────────────────────────────────
 
   onMount(async () => {
-    const urlEdit = $page.url.searchParams.get('edit');
-    if (urlEdit) {
-      editId = parseInt(urlEdit);
-      const existing = await getJournal(editId);
-      if (existing) {
-        const { id: _, ...rest } = existing;
-        form = {
-          ...emptyJournal(),
-          ...rest,
-          schemas: rest.schemas && rest.schemas.length === 6
-            ? rest.schemas
-            : defaultSchemas(),
-        };
+    try {
+      const urlEdit = $page.url.searchParams.get('edit');
+      if (urlEdit) {
+        editId = parseInt(urlEdit);
+        const existing = await getJournal(editId);
+        if (existing) {
+          const { id: _, ...rest } = existing;
+          form = {
+            ...emptyJournal(),
+            ...rest,
+            schemas: rest.schemas && rest.schemas.length === 6
+              ? rest.schemas
+              : defaultSchemas(),
+          };
+        }
+      } else {
+        const profil = await getProfil();
+        form = emptyJournal(profil);
       }
-    } else {
-      const profil = await getProfil();
-      form = emptyJournal(profil);
+    } catch (err) {
+      console.error('DB error:', err);
+      // If it's a version error, offer to reset
+      if (String(err).includes('version') || String(err).includes('upgrade')) {
+        if (confirm('La base de données doit être réinitialisée pour cette mise à jour. Vos données seront perdues. Continuer?')) {
+          await import('dexie').then(({ default: Dexie }) => Dexie.delete('JournalDeTirDB'));
+          location.reload();
+        }
+      }
+    } finally {
+      loading = false;
     }
-    loading = false;
   });
 
   // ── Save ───────────────────────────────────────────────────────────────────

@@ -151,6 +151,28 @@ class JournalDB extends Dexie {
 
   constructor() {
     super('JournalDeTirDB');
+
+    // Historical versions (needed for Dexie upgrade path)
+    this.version(1).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    this.version(2).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    this.version(3).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    this.version(4).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
+    this.version(5).stores({
+      profil: '++id',
+      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+    });
     // Version 6: complete simplification — matching 3-page government form
     this.version(6).stores({
       profil: '++id',
