@@ -64,9 +64,10 @@
     if (saving) return;
     saving = true;
     try {
+      const snapshot = $state.snapshot(form);
       const data: Omit<JournalTir, 'id'> = {
-        ...form,
-        statut: andComplete ? 'complete' : form.statut,
+        ...snapshot,
+        statut: andComplete ? 'complete' : snapshot.statut,
         updatedAt: new Date().toISOString(),
       };
       if (editId) {
@@ -91,9 +92,10 @@
     if (saving) return;
     saving = true;
     try {
+      const snapshot = $state.snapshot(form);
       const data: Omit<JournalTir, 'id'> = {
-        ...form,
-        statut: form.statut,
+        ...snapshot,
+        statut: snapshot.statut,
         updatedAt: new Date().toISOString(),
       };
       let id: number;
@@ -113,6 +115,8 @@
     } catch (err) {
       console.error(err);
       showToast('Erreur lors de la sauvegarde', 'error');
+      saving = false;
+    } finally {
       saving = false;
     }
   }
