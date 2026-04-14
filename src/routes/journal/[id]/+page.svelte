@@ -107,6 +107,14 @@
           cursor: pointer; font-family: inherit;
         "
       >✏️ Modifier</button>
+      <button
+        onclick={() => goto(base + `/journal/${journal?.id}/print`)}
+        style="
+          padding: 7px 12px; border-radius: 6px; font-size: 11px; font-weight: 600;
+          background: var(--card2); border: 1px solid var(--border); color: var(--text2);
+          cursor: pointer; font-family: inherit;
+        "
+      >👁️ Aperçu</button>
       {#if journal.statut === 'brouillon'}
         <button
           onclick={markComplete}

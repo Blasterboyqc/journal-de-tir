@@ -85,6 +85,38 @@
     }
   }
 
+  // ── Preview / Aperçu ───────────────────────────────────────────────────────
+
+  async function preview() {
+    if (saving) return;
+    saving = true;
+    try {
+      const data: Omit<JournalTir, 'id'> = {
+        ...form,
+        statut: form.statut,
+        updatedAt: new Date().toISOString(),
+      };
+      let id: number;
+      if (editId) {
+        await updateJournal(editId, data);
+        id = editId;
+      } else {
+        id = await saveJournal(data);
+        editId = id;
+        // Update URL so future saves will edit this journal
+        const url = new URL(window.location.href);
+        url.searchParams.set('edit', String(id));
+        window.history.replaceState({}, '', url.toString());
+      }
+      showToast('💾 Brouillon sauvegardé', 'success');
+      goto(base + `/journal/${id}/print`);
+    } catch (err) {
+      console.error(err);
+      showToast('Erreur lors de la sauvegarde', 'error');
+      saving = false;
+    }
+  }
+
   // ── Oui/Non toggle helper ──────────────────────────────────────────────────
 
   function ouiNonToggle(field: keyof JournalTir, val: boolean) {
@@ -120,6 +152,16 @@
         </div>
         <div style="font-size: 10px; color: var(--text3);">{form.numero_tir} · Annexe 2.2</div>
       </div>
+      <button
+        onclick={preview}
+        disabled={saving}
+        style="
+          padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700;
+          background: var(--card2); color: var(--text2); border: 1px solid var(--border);
+          cursor: pointer; font-family: inherit; white-space: nowrap;
+          opacity: {saving ? 0.6 : 1};
+        "
+      >👁️ Aperçu</button>
       <button
         onclick={() => save(false)}
         disabled={saving}
