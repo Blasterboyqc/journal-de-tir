@@ -4,7 +4,6 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { getJournal, type JournalTir } from '$lib/db';
-  import BlastPatternCanvas from '$lib/components/BlastPatternCanvas.svelte';
 
   let journal = $state<JournalTir | null>(null);
   let loading = $state(true);
@@ -21,437 +20,307 @@
     loading = false;
   });
 
-  function fmt(v: string | undefined | null, fallback = '—') {
-    return v?.trim() || fallback;
-  }
-
-  function fmtBool(v: string | undefined | null): string {
-    if (v === 'Oui' || v === 'oui') return '☑ Oui  ☐ Non';
-    if (v === 'Non' || v === 'non') return '☐ Oui  ☑ Non';
+  function yesNo(val: boolean | null | undefined): string {
+    if (val === true) return 'Oui ☑';
+    if (val === false) return 'Non ☑';
     return '☐ Oui  ☐ Non';
   }
 
-  function printPage() {
-    window.print();
+  function formatDate(d: string) {
+    if (!d) return '—';
+    try {
+      const [y, m, day] = d.split('-');
+      return `${day} / ${m} / ${y}`;
+    } catch { return d; }
   }
 </script>
 
 <svelte:head>
-  <title>Journal de tir — {journal?.numero_tir ?? ''} — Impression</title>
-  <style>
-    @media print {
-      .no-print { display: none !important; }
-      body { background: white !important; color: black !important; }
-      .print-page { box-shadow: none !important; margin: 0 !important; border: none !important; }
-    }
-    @page {
-      size: letter portrait;
-      margin: 15mm 12mm;
-    }
-  </style>
+  <title>Journal de tir — {journal?.numero_tir || ''}</title>
 </svelte:head>
 
-<!-- Toolbar (no-print) -->
-<div class="no-print" style="
-  position: fixed; top: 0; left: 0; right: 0; z-index: 999;
-  background: #1a1a2e; border-bottom: 1px solid #333;
-  padding: 10px 16px; display: flex; align-items: center; gap: 10px;
-">
-  <button
-    onclick={() => goto(base + `/journal/${id}`)}
-    style="
-      padding: 8px 14px; border-radius: 8px; cursor: pointer;
-      background: transparent; border: 1px solid #555;
-      color: #aaa; font-size: 13px; font-family: inherit;
-    "
-  >← Retour</button>
-  <div style="flex: 1; font-size: 14px; font-weight: 600; color: #eee;">
-    📄 Aperçu impression — Journal de tir par sautage (ASP Construction)
-  </div>
-  <button
-    onclick={printPage}
-    style="
-      padding: 8px 16px; border-radius: 8px; cursor: pointer;
-      background: #4f6ef7; border: none; color: white;
-      font-size: 13px; font-weight: 600; font-family: inherit;
-    "
-  >🖨️ Imprimer / PDF</button>
-</div>
-
-<!-- Print content -->
-<div class="no-print" style="height: 56px;"></div>
-
 {#if loading}
-  <div style="padding: 40px; text-align: center; color: #999;">Chargement...</div>
+  <div style="padding: 40px; text-align: center; color: #666;">Chargement...</div>
 {:else if journal}
-  <div class="print-page" style="
-    max-width: 680px; margin: 0 auto; padding: 20px;
-    background: white; color: #111;
-    font-family: 'Times New Roman', Times, serif;
-    font-size: 10pt; line-height: 1.4;
-  ">
+<div style="
+  max-width: 800px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;
+  font-size: 11pt; color: #000; background: #fff;
+">
 
-    <!-- ── Title ──────────────────────────────────────────────────────────── -->
-    <div style="text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 8px;">
-      <div style="font-size: 16pt; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">
-        Journal de tir par sautage
-      </div>
-      <div style="font-size: 8pt; color: #333; margin-top: 4px;">
-        Référence : Annexe 2.2 Journal de tir (art. 4.7.10) — Code de sécurité pour les travaux de construction
-      </div>
-      <div style="font-size: 8pt; color: #555; margin-top: 2px;">
-        ASP Construction — CA04-2025-02 · Numéro de tir : <strong>{fmt(journal.numero_tir)}</strong>
-      </div>
-    </div>
-
-    <!-- ── Section A — Identification du chantier ───────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          A — IDENTIFICATION DU CHANTIER
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; width: 28%; border: 1px solid #ccc;">Nom de l'entreprise :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.nom_entreprise)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Adresse :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.adresse_entreprise, '—')}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Localisation du chantier :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.chantier)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Donneur d'ouvrage :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.donneur_ouvrage)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section B — Info sur le sautage / Section C — Conditions ──────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr>
-          <th colspan="2" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left; width: 50%;">
-            B — INFORMATION SUR LE SAUTAGE
-          </th>
-          <th colspan="2" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left; width: 50%;">
-            C — CONDITIONS CLIMATIQUES
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Localisation / chaînage :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 28%;">{fmt(journal.station)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Température :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 28%;">{fmt(journal.temperature)} °C</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Date (j/m/a) :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.date_tir)}</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;" colspan="2">
-            {journal.meteo_ensoleille ? '☑' : '☐'} Ensoleillé &nbsp;
-            {journal.meteo_nuageux ? '☑' : '☐'} Nuageux &nbsp;
-            {journal.meteo_pluie ? '☑' : '☐'} Pluie &nbsp;
-            {journal.meteo_neige ? '☑' : '☐'} Neige
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Heure :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.heure_tir)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Dir. et vitesse vents :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.vent_direction_vitesse)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nb volées quotidiennes :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.nb_volees_quotidiennes)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Conditions du roc :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.conditions_roc)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section D — Données sur le forage ──────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          D — DONNÉES SUR LE FORAGE
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 30%;">Nb trous et diamètre :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 20%;">{fmt(journal.nb_trous)} trous, {fmt(journal.diametre)} mm</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 25%;">Fardeau × Espacement :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.fardeau)} m × {fmt(journal.espacement)} m</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Prof. moy. par rangée :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.profondeur_prevue)} m</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Hauteur du collet :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.hauteur_collet)} m</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nature de la bourre :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">
-            {journal.nature_bourre === 'pierre nette' ? '☑' : '☐'} pierre nette &nbsp;
-            {journal.nature_bourre === 'concassée' ? '☑' : '☐'} concassée
-          </td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Hauteur mort terrain :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.hauteur_mort_terrain)} m</td>
-        </tr>
-        <tr>
-          <td colspan="4" style="padding: 3px 6px; border: 1px solid #ccc; font-size: 9pt;">
-            <strong>Vibrations :</strong>
-            ● Valeur à respecter : {fmt(journal.vibrations_valeur_respecter)} &nbsp;
-            ● Valeur obtenue : {fmt(journal.vibrations_ppv)} &nbsp;
-            ● Sismographes : {fmt(journal.vibrations_sismographes)}
-          </td>
-        </tr>
-        {#if journal.nb_trous_predecoupage}
-          <tr>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Nb trous pré-découpage :</td>
-            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.nb_trous_predecoupage)}</td>
-          </tr>
-        {/if}
-        {#if journal.type_pare_eclats}
-          <tr>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Type pare-éclats :</td>
-            <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.type_pare_eclats)}</td>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Dim. / Nb :</td>
-            <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.pare_eclats_dimension)} / {fmt(journal.pare_eclats_nombre)}</td>
-          </tr>
-        {/if}
-      </tbody>
-    </table>
-
-    <!-- ── Section E — Distances des structures ───────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="6" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          E — DISTANCE DES STRUCTURES LES PLUS PRÈS (en mètre)
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Bâtiment :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.dist_batiment)} m</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Pont :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.dist_pont)} m</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Route :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.dist_route)} m</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Ligne électrique :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.dist_ligne_electrique)} m</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Structure s-terrain :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.dist_structure_souterraine)} m</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section F — Explosifs ──────────────────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          F — EXPLOSIFS (réf. : Colonne de charge)
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Type :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{fmt(journal.type_detonateurs)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 25%;">Nb détonateurs :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.nb_detonateurs)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Quantité utilisée :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">
-            {fmt(journal.total_explosif_kg)} kg total
-            {journal.explosifs && journal.explosifs.length > 0
-              ? ' — ' + journal.explosifs.map(e => `${e.type || '?'} (${e.total_kg || '?'} kg)`).join(', ')
-              : ''}
-          </td>
-        </tr>
-        {#if journal.type_emulsion_pompee}
-          <tr>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Type émulsion pompée :</td>
-            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.type_emulsion_pompee)}</td>
-          </tr>
-        {/if}
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Volume de roc :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.volume_roc_m3)} m³</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Facteur chargement :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.facteur_chargement)} kg/m³</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section G — Recommandations ────────────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="6" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          G — RECOMMANDATIONS (BONNES PRATIQUES)
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 24%;">Caméra vidéo :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 18%;">{fmtBool(journal.camera_video)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 24%;">Écaillage sécurité :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmtBool(journal.ecaillage_securite)}</td>
-        </tr>
-        <tr>
-          <td colspan="4" style="padding: 3px 6px; border: 1px solid #ccc;">
-            <strong>Détecteur résidentiel de CO (norme BNQ) :</strong> &nbsp; {fmtBool(journal.detecteur_co_bnq)}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section H — Résultats du sautage ───────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          H — RÉSULTAT DU SAUTAGE
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Concentration max. CO :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{fmt(journal.concentration_co_ppm)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 26%;">Fracturation telle qu'exigée :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmtBool(journal.fracturation_exigee)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Bris hors profil :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmtBool(journal.bris_hors_profil)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Trous ratés / canon / fond :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmtBool(journal.trous_rates)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Projection :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmtBool(journal.projection)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Heure mise à feu :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.heure_mise_a_feu)}</td>
-        </tr>
-        {#if journal.projection === 'Oui'}
-          <tr>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; padding-left: 18px;">● Distance et pierres :</td>
-            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.projection_distance_pierres)}</td>
-          </tr>
-          <tr>
-            <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; padding-left: 18px;">● Description dommages :</td>
-            <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.description_dommages)}</td>
-          </tr>
-        {/if}
-      </tbody>
-    </table>
-
-    <!-- ── Plan du patron de forage (dessin libre) ───────────────────────── -->
-    {#if journal.patron_forage_dataurl}
-      <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">
-        <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; background: #222; color: white; padding: 4px 6px; margin: -8px -8px 8px -8px;">
-          PLAN DU PATRON DE FORAGE
-        </div>
-        <img
-          src={journal.patron_forage_dataurl}
-          alt="Plan du patron de forage"
-          style="width: 100%; display: block; border-radius: 4px;"
-        />
-      </div>
-    {/if}
-
-    <!-- ── Blast Pattern Canvas (if available) ────────────────────────────── -->
-    {#if journal.firingSequence && journal.firingSequence.holes.length > 0}
-      <div style="margin-bottom: 6px; border: 1px solid #ccc; padding: 8px;">
-        <div style="font-size: 9pt; font-weight: bold; text-transform: uppercase; background: #222; color: white; padding: 4px 6px; margin: -8px -8px 8px -8px;">
-          PLAN DE TIR / SÉQUENCE DE DÉTONATION (Vision AI)
-        </div>
-        <BlastPatternCanvas
-          firingSequence={journal.firingSequence}
-          title={journal.numero_tir || ''}
-          shotInfo="{journal.chantier || ''}{journal.chantier && journal.date_tir ? ' · ' : ''}{journal.date_tir || ''}"
-          interactive={false}
-          showAnimation={false}
-          showExport={false}
-        />
-        <div style="font-size: 8pt; color: #555; margin-top: 4px; text-align: right;">
-          {journal.firingSequence.holes.length} trous · Extrait via Vision AI ({journal.firingSequence.model ?? 'Gemini'})
-        </div>
-      </div>
-    {/if}
-
-    <!-- ── Section I — Remarques ──────────────────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="1" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          I — REMARQUES
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 4px 6px; border: 1px solid #ccc; min-height: 40px; vertical-align: top; white-space: pre-wrap; font-size: 9pt;">
-            {fmt(journal.remarques, '')}
-            {#if !journal.remarques}<br><br>{/if}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Section J — Signature ──────────────────────────────────────────── -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px;">
-      <thead>
-        <tr><th colspan="4" style="background: #222; color: white; padding: 4px 6px; font-size: 9pt; text-align: left;">
-          J — SIGNATURE
-        </th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 28%;">Nom du boutefeu :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc; width: 22%;">{fmt(journal.boutefeu_prenom)} {fmt(journal.boutefeu_nom)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc; width: 22%;">Date :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.signature_date)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Signature :</td>
-          <td colspan="3" style="padding: 3px 6px; border: 1px solid #ccc; height: 60px; vertical-align: middle; text-align: center;">
-            {#if journal.signature_data}
-              <img
-                src={journal.signature_data}
-                alt="Signature"
-                style="max-height: 50px; max-width: 200px; object-fit: contain;"
-              />
-            {:else}
-              <span style="color: #999; font-style: italic;">Signature manquante</span>
-            {/if}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Certificat CSTC :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.boutefeu_certificat)}</td>
-          <td style="padding: 3px 6px; font-weight: bold; border: 1px solid #ccc;">Permis SQ :</td>
-          <td style="padding: 3px 6px; border: 1px solid #ccc;">{fmt(journal.boutefeu_permis_sq)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- ── Legal note ─────────────────────────────────────────────────────── -->
-    <div style="
-      margin-top: 8px; padding: 6px 10px;
-      border: 1px solid #999; font-size: 8pt; color: #555;
-      line-height: 1.4;
-    ">
-      <strong>Note légale :</strong> L'employeur doit conserver le journal de tir pendant une durée de <strong>3 ans</strong>
-      et le rendre disponible en tout temps sur le lieu de travail.
-      &nbsp;&nbsp;
-      <em>Originale — Faire une copie pour conserver dans les dossiers de l'entreprise.</em>
-    </div>
-
+  <!-- Print action -->
+  <div style="margin-bottom: 16px; text-align: right;" class="no-print">
+    <button onclick={() => window.print()} style="
+      padding: 8px 16px; background: #4f6ef7; color: #fff; border: none;
+      border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+    ">🖨️ Imprimer</button>
+    <button onclick={() => goto(base + `/journal/${journal?.id}`)} style="
+      padding: 8px 16px; background: #eee; color: #333; border: none;
+      border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; margin-left: 8px;
+    ">← Retour</button>
   </div>
+
+  <!-- Title -->
+  <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+    <div style="font-size: 14pt; font-weight: bold;">JOURNAL DE TIR PAR SAUTAGE</div>
+    <div style="font-size: 9pt;">Annexe 2.2 Journal de tir (art. 4.7.10.) du Code de sécurité pour les travaux de construction</div>
+  </div>
+
+  <!-- En-tête -->
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; width: 30%; font-weight: bold; background: #f5f5f5;">Nom de l'entreprise</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.nom_entreprise || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Adresse</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.adresse_entreprise || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Localisation du chantier</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.localisation_chantier || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Donneur d'ouvrage</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.donneur_ouvrage || ''}</td>
+    </tr>
+  </tbody></table>
+
+  <!-- Section: Information sur le sautage -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    INFORMATION SUR LE SAUTAGE À L'EXPLOSIF
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; width: 30%;">Localisation / chaînage</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;" colspan="3">{journal.localisation_chainage || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Date (jour/mois/an)</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{formatDate(journal.date_tir)}</td>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Heure</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.heure_tir || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Nb volées quotidiennes</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;" colspan="3">{journal.nb_volees_quotidiennes || ''}</td>
+    </tr>
+  </tbody></table>
+
+  <!-- Conditions climatiques -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    CONDITIONS CLIMATIQUES
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; width: 30%;">Température (°C)</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.temperature || ''}</td>
+      <td style="border: 1px solid #999; padding: 4px 6px; width: 40%;">
+        {journal.meteo_ensoleille ? '☑' : '☐'} Ensoleillé &nbsp;
+        {journal.meteo_nuageux ? '☑' : '☐'} Nuageux &nbsp;
+        {journal.meteo_pluie ? '☑' : '☐'} Pluie &nbsp;
+        {journal.meteo_neige ? '☑' : '☐'} Neige
+      </td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Direction et vitesse des vents</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;" colspan="2">{journal.vent_direction_vitesse || ''}</td>
+    </tr>
+  </tbody></table>
+
+  <!-- Données sur le forage -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    DONNÉES SUR LE FORAGE
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; width: 30%;">Nb trous et diamètre</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.nb_trous || ''} trous · {journal.diametre_forage || ''} mm</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Fardeau / Espacement</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.fardeau || ''} m / {journal.espacement || ''} m</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Profondeur moy. par rangée</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.profondeur_moy_rangee || ''} m</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Hauteur collet / Nature bourre</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">
+        {journal.hauteur_collet || ''} m &nbsp;
+        {journal.nature_bourre_pierre_nette ? '☑' : '☐'} pierre nette &nbsp;
+        {journal.nature_bourre_concassee ? '☑' : '☐'} concassée
+      </td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Hauteur mort terrain</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.hauteur_mort_terrain || ''} m</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Vibrations — valeur à respecter</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.vibrations_valeur_respecter || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Vibrations — valeur obtenue</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.vibrations_valeur_obtenue || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Emplacement sismographes</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.vibrations_sismographes || ''}</td>
+    </tr>
+    {#if journal.nb_trous_predecoupage}
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Nb trous pré-découpage</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.nb_trous_predecoupage}</td>
+    </tr>
+    {/if}
+    {#if journal.type_pare_eclats}
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Pare-éclats</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.type_pare_eclats} · {journal.pare_eclats_dimension || ''} · {journal.pare_eclats_nombre || ''}</td>
+    </tr>
+    {/if}
+  </tbody></table>
+
+  <!-- Distance structures -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    DISTANCE DES STRUCTURES LES PLUS PRÈS (EN MÈTRE)
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      {#each [
+        ['Bâtiment', journal.dist_batiment],
+        ['Pont', journal.dist_pont],
+        ['Route', journal.dist_route],
+        ['Ligne élec.', journal.dist_ligne_electrique],
+        ['Sous-terr.', journal.dist_structure_souterraine],
+      ] as [lbl, val]}
+        <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; text-align: center; font-size: 9pt;">{lbl}</td>
+      {/each}
+    </tr>
+    <tr>
+      {#each [journal.dist_batiment, journal.dist_pont, journal.dist_route, journal.dist_ligne_electrique, journal.dist_structure_souterraine] as val}
+        <td style="border: 1px solid #999; padding: 4px 6px; text-align: center;">{val || ''}</td>
+      {/each}
+    </tr>
+  </tbody></table>
+
+  <!-- Explosifs -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    EXPLOSIFS (RÉF.: COLONNE DE CHARGE)
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; width: 30%;">Type de détonateurs</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.type_detonateurs || ''}</td>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5; width: 20%;">Nb détonateurs</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.nb_detonateurs || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Quantité d'explosifs</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;" colspan="3">{journal.quantite_explosifs || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Type émulsion pompée</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.type_emulsion_pompee || ''}</td>
+      <td style="border: 1px solid #999; padding: 4px 6px; font-weight: bold; background: #f5f5f5;">Volume roc / Facteur</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.volume_roc_m3 || ''} m³ / {journal.facteur_chargement || ''} kg/m³</td>
+    </tr>
+  </tbody></table>
+
+  <!-- Recommandations -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    RECOMMANDATIONS (BONNES PRATIQUES)
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; width: 55%;">Caméra vidéo</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.camera_video)}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Écaillage de sécurité</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.ecaillage_securite)}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Détecteur résidentiel de CO selon la norme BNQ</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.detecteur_co_bnq)}</td>
+    </tr>
+  </tbody></table>
+
+  <!-- Résultats -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    RÉSULTAT DU SAUTAGE
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10pt;"><tbody>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px; width: 55%;">Concentration max. de CO</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.concentration_co_ppm || ''}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Fracturation telle qu'exigée</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.fracturation_exigee)}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Bris hors profil</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.bris_hors_profil)}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Trous ratés / canon / fond de trou</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{yesNo(journal.trous_rates)}</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Projection</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">
+        {yesNo(journal.projection)}
+        {#if journal.projection === true}
+          {#if journal.projection_details} — {journal.projection_details}{/if}
+        {/if}
+      </td>
+    </tr>
+    {#if journal.description_dommages}
+    <tr>
+      <td style="border: 1px solid #999; padding: 4px 6px;">Description des dommages</td>
+      <td style="border: 1px solid #999; padding: 4px 6px;">{journal.description_dommages}</td>
+    </tr>
+    {/if}
+  </tbody></table>
+
+  <!-- Remarques -->
+  <div style="font-weight: bold; font-size: 10pt; background: #ddd; padding: 4px 6px; border: 1px solid #999; margin-top: 8px;">
+    REMARQUES
+  </div>
+  <div style="border: 1px solid #999; border-top: none; padding: 6px; min-height: 50px; font-size: 10pt;">
+    {journal.remarques || ''}
+  </div>
+
+  <!-- Signature -->
+  <div style="margin-top: 16px; border: 1px solid #999; padding: 10px;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 10pt;"><tbody>
+      <tr>
+        <td style="width: 50%; padding-right: 20px;">
+          <div style="font-weight: bold; margin-bottom: 4px;">Nom du boutefeu:</div>
+          <div>{journal.boutefeu_prenom} {journal.boutefeu_nom}</div>
+          <div style="font-size: 9pt; color: #555;">Cert. CSTC: {journal.boutefeu_certificat || '—'} · Permis SQ: {journal.boutefeu_permis_sq || '—'}</div>
+        </td>
+        <td style="width: 50%;">
+          <div style="font-weight: bold; margin-bottom: 4px;">Signature:</div>
+          <div style="height: 40px; border-bottom: 1px solid #000;"></div>
+        </td>
+      </tr>
+    </tbody></table>
+  </div>
+
+  <!-- Legal note -->
+  <div style="margin-top: 10px; font-size: 8pt; color: #555; border-top: 1px solid #ccc; padding-top: 6px;">
+    L'employeur doit conserver le journal de tir pendant une durée de 3 ans à compter de la date de la dernière intervention au chantier.
+  </div>
+
+</div>
 {/if}
+
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    body { background: white; }
+  }
+</style>

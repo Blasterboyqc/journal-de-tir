@@ -1,0 +1,31 @@
+import{B as e,C as t,H as n,I as r,J as i,L as a,Q as o,R as s,S as c,T as l,V as u,X as d,Z as f,_ as p,b as m,g as h,h as g,j as _,l as v,m as y,n as b,q as x,u as S,v as C,x as w,z as T}from"../chunks/BX0KRJEI.js";import{c as E,t as D}from"../chunks/B-BRZORP.js";import"../chunks/CT0T0Gak.js";import"../chunks/Ce1j1UtY.js";import{a as O,o as k}from"../chunks/D8wD4mIp.js";var A=m(`<div style="font-size: 12px; color: var(--text3);">Bonjour, <strong style="color: var(--text);"> </strong> <!></div>`),j=m(`<div style="font-size: 12px; color: var(--text3);"><a style="color: var(--accent2); text-decoration: underline;">Configurez votre profil</a> pour pré-remplir les journaux.</div>`),M=m(`<div><div> </div> <div style="font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;"> </div></div>`),N=m(`<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px;"></div>`),P=m(`<button><div style="font-size: 20px;">💥</div> <div style="flex: 1; min-width: 0;"><div style="font-size: 13px; font-weight: 700; color: var(--text);"> </div> <div style="font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"> </div></div> <span> </span></button>`),F=m(`<div style="
+      font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+    "><span>Tirs récents</span> <button style="font-size: 11px; color: var(--accent2); background: none; border: none; cursor: pointer; font-family: inherit;">Voir tout →</button></div> <!>`,1),I=m(`<div style="
+      text-align: center; padding: 32px 20px;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    "><div style="font-size: 40px; margin-bottom: 10px;">📋</div> <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Aucun journal encore</div> <div style="font-size: 12px; color: var(--text3);">Commencez par créer un nouveau journal de tir.</div></div>`),L=m(`<div style="padding: 14px 12px 0;"><div style="
+    background: linear-gradient(135deg, rgba(79,110,247,0.15) 0%, rgba(107,114,153,0.1) 100%);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
+    position: relative; overflow: hidden;
+  "><div style="
+      position: absolute; top: -20px; right: -20px;
+      font-size: 80px; opacity: 0.08; user-select: none;
+      transform: rotate(15deg);
+    ">💥</div> <div style="font-size: 20px; font-weight: 900; color: var(--text); margin-bottom: 4px;">Journal de Tir</div> <div style="font-size: 11px; color: var(--accent2); font-weight: 600; margin-bottom: 8px;">Annexe 2.2 — Code de sécurité pour les travaux de construction</div> <!></div> <!> <button class="btn btn-primary btn-full" style="margin-bottom: 14px; font-size: 15px; padding: 14px; font-weight: 800;">✏️ Nouveau journal de tir</button> <!> <div style="
+    background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; margin-top: 14px;
+    font-size: 10px; color: var(--text3); line-height: 1.6; text-align: center;
+  ">📱 Application hors-ligne · Données sur votre appareil uniquement<br/> Formulaire Annexe 2.2 du Code de sécurité, travaux de construction (Québec)</div></div>`);function R(c,m){i(m,!0);let R=u(T([])),z=u(null),B=u(!0);b(async()=>{await(async t=>{var n=o(t,2);e(R,n[0],!0),e(z,n[1],!0)})(await Promise.all([O(),k()])),e(B,!1)});let V=n(()=>({total:l(R).length,brouillons:l(R).filter(e=>e.statut===`brouillon`).length,completes:l(R).filter(e=>e.statut===`complete`).length})),H=n(()=>l(R).slice(0,3));function U(e){if(!e)return`—`;try{return new Date(e).toLocaleDateString(`fr-CA`,{day:`2-digit`,month:`short`})}catch{return e}}var W=L(),G=r(W),K=s(r(G),6),q=e=>{var t=A(),n=s(r(t)),i=r(n);f(n);var a=s(n,2),o=e=>{var t=w();_(()=>p(t,`· Cert. ${l(z).certificat_cstc??``}`)),C(e,t)};h(a,e=>{l(z).certificat_cstc&&e(o)}),f(t),_(()=>p(i,`${l(z).prenom??``} ${l(z).nom??``}`)),C(e,t)},J=e=>{var n=j(),i=r(n);d(),f(n),_(()=>v(i,`href`,`${E??``}/profil`)),t(`click`,i,e=>{e.preventDefault(),D(E+`/profil`)}),C(e,n)};h(K,e=>{l(z)?.prenom?e(q):e(J,-1)}),f(G);var Y=s(G,2),X=e=>{var t=N();y(t,21,()=>[{val:l(V).total,label:`Journaux`,color:`var(--accent2)`,bg:`var(--accent-glow)`},{val:l(V).brouillons,label:`Brouillons`,color:`var(--yellow)`,bg:`var(--yellow-dim)`},{val:l(V).completes,label:`Complétés`,color:`var(--green)`,bg:`var(--green-dim)`}],g,(e,t)=>{var n=M(),i=r(n),a=r(i,!0);f(i);var o=s(i,2),c=r(o,!0);f(o),f(n),_(()=>{S(n,`
+        background: ${l(t).bg??``}; border: 1px solid ${l(t).color??``}33;
+        border-radius: var(--radius-sm); padding: 12px 10px; text-align: center;
+      `),S(i,`font-size: 24px; font-weight: 900; color: ${l(t).color??``};`),p(a,l(t).val),p(c,l(t).label)}),C(e,n)}),f(t),C(e,t)};h(Y,e=>{l(B)||e(X)});var Z=s(Y,2),Q=s(Z,2),$=e=>{var n=F(),i=a(n),o=s(r(i),2);f(i),y(s(i,2),17,()=>l(H),g,(e,n)=>{var i=P(),a=s(r(i),2),o=r(a),c=r(o,!0);f(o);var u=s(o,2),d=r(u);f(u),f(a);var m=s(a,2),h=r(m,!0);f(m),f(i),_(e=>{S(i,`
+          width: 100%; display: flex; align-items: center; gap: 10px;
+          background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+          padding: 10px 12px; margin-bottom: 8px; cursor: pointer; text-align: left; font-family: inherit;
+          border-left: 3px solid ${l(n).statut===`complete`?`var(--green)`:`var(--yellow)`};
+        `),p(c,l(n).numero_tir),p(d,`${(l(n).localisation_chantier||`Chantier —`)??``} · ${e??``}`),S(m,`
+          font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 20px;
+          ${l(n).statut===`complete`?`background: var(--green-dim); color: var(--green);`:`background: var(--yellow-dim); color: var(--yellow);`}
+        `),p(h,l(n).statut===`complete`?`✅`:`✏️`)},[()=>U(l(n).date_tir)]),t(`click`,i,()=>D(E+`/journal/${l(n).id}`)),C(e,i)}),t(`click`,o,()=>D(E+`/historique`)),C(e,n)},ee=e=>{C(e,I())};h(Q,e=>{l(H).length>0?e($):l(B)||e(ee,1)}),d(2),f(W),t(`click`,Z,()=>D(E+`/journal/new`)),C(c,W),x()}c([`click`]);export{R as component};

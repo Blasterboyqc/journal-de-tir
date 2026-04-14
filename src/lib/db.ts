@@ -1,5 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 
+// ─── Profil Boutefeu ──────────────────────────────────────────────────────────
+
 export interface ProfilBoutefeu {
   id?: number;
   prenom: string;
@@ -10,181 +12,138 @@ export interface ProfilBoutefeu {
   employeur: string;
   chantier_actuel: string;
   telephone: string;
-  email: string;
   updatedAt: string;
-  gemini_api_key?: string;
 }
+
+// ─── Schéma de sautage (page 3) ───────────────────────────────────────────────
+
+export interface SchemaForage {
+  // Header
+  chargement_type: string;        // Chargement-Type
+  profondeur_sol_roc: string;     // Profondeur des forages: SOL/ROC (incluant mort terrain)
+  // Borehole diagram data
+  bourre: string;                 // Bourre / Espaceurs description
+  explosifs_amorces: string;      // Explosifs / Amorces description
+  // Labels for the hole layers (bullet points on the left)
+  couches: string;                // Free text, one label per line
+  // Footer
+  trous_de: string;               // Trous n°: ___ à ___
+  trous_a: string;
+}
+
+// ─── Journal de Tir — structure = 3 pages form ───────────────────────────────
 
 export interface JournalTir {
   id?: number;
   numero_tir: string;
-  statut: 'brouillon' | 'complete' | 'archive';
+  statut: 'brouillon' | 'complete';
 
-  // ── Section A — Identification du chantier ─────────────────────────────────
-  date_tir: string;
+  // ── PAGE 1: Journal de tir par sautage ────────────────────────────────────
+
+  // En-tête
+  nom_entreprise: string;
+  adresse_entreprise: string;
+  localisation_chantier: string;
+  donneur_ouvrage: string;
+
+  // Information sur le sautage
+  localisation_chainage: string;
+  date_tir: string;              // YYYY-MM-DD
   heure_tir: string;
-  chantier: string;          // [A3] Localisation du chantier
-  station: string;           // [B1] Localisation / chaînage
-  contrat: string;
-  nom_entreprise: string;    // [A1] Nom de l'entreprise
-  adresse_entreprise: string;// [A2] Adresse (optionnel)
-  donneur_ouvrage: string;   // [A4] Donneur d'ouvrage
-  nb_volees_quotidiennes: string; // [B4] Nombre de volées quotidiennes
+  nb_volees_quotidiennes: string;
 
-  // ── Section B — Boutefeu et permis ────────────────────────────────────────
-  boutefeu_prenom: string;
-  boutefeu_nom: string;
-  boutefeu_certificat: string;
-  boutefeu_permis_sq: string;
-  superviseur: string;
-  employeur: string;
+  // Conditions climatiques
+  temperature: string;           // °C
+  meteo_ensoleille: boolean;
+  meteo_nuageux: boolean;
+  meteo_pluie: boolean;
+  meteo_neige: boolean;
+  vent_direction_vitesse: string;
 
-  // ── Section C — Conditions climatiques ────────────────────────────────────
-  temperature: string;       // [C1] Température °C
-  meteo: string;             // legacy single select (kept for compat)
-  meteo_ensoleille: boolean; // [C2] Ensoleillé
-  meteo_nuageux: boolean;    // [C3] Nuageux
-  meteo_pluie: boolean;      // [C4] Pluie
-  meteo_neige: boolean;      // [C5] Neige
-  vent_direction_vitesse: string; // [C6] Direction et vitesse des vents
-  conditions_roc: string;
-  geologie: string;
-  type_roc: string;
+  // Données sur le forage
+  nb_trous: string;              // nombre de trous
+  diametre_forage: string;       // diamètre de forage (mm)
+  fardeau: string;               // m
+  espacement: string;            // m
+  profondeur_moy_rangee: string; // profondeur moyenne par rangée (m)
+  hauteur_collet: string;        // m
+  nature_bourre_pierre_nette: boolean;
+  nature_bourre_concassee: boolean;
+  hauteur_mort_terrain: string;  // m
+  vibrations_valeur_respecter: string;
+  vibrations_valeur_obtenue: string;
+  vibrations_sismographes: string;
+  nb_trous_predecoupage: string;
+  type_pare_eclats: string;
+  pare_eclats_dimension: string;
+  pare_eclats_nombre: string;
 
-  // ── Section D — Données sur le forage ──────────────────────────────────────
-  type_tir: string;          // type de tir (banc, tranchée, etc.)
-  nb_trous: string;          // [D1] nombre de trous (avec diamètre)
-  diametre: string;          // [D1] diamètre de forage (mm)
-  espacement: string;        // [D2] espacement (m)
-  fardeau: string;           // [D2] fardeau (m)
-  profondeur_prevue: string; // [D3] profondeur moyenne par rangée (m)
-  profondeur_reelle: string;
-  hauteur_collet: string;    // [D4] hauteur du collet (m)
-  nature_bourre: string;     // [D4b] pierre nette | concassée
-  hauteur_mort_terrain: string; // [D5] hauteur du mort terrain (m)
-  sous_forage: string;       // sous-forage (m)
-  inclinaison: string;       // inclinaison (°)
-  orientation: string;
-  vibrations_valeur_respecter: string; // [D6a] valeur à respecter
-  vibrations_ppv: string;    // [D6b] valeur obtenue (PPV mm/s)
-  vibrations_sismographes: string; // [D6c] emplacement des sismographes
-  nb_trous_predecoupage: string; // [D7] nombre de trous de pré-découpage
-  type_pare_eclats: string;  // [D8] type de pare-éclats
-  pare_eclats_dimension: string; // [D8b] dimension
-  pare_eclats_nombre: string;   // [D8c] nombre
+  // Distance des structures (m)
+  dist_batiment: string;
+  dist_pont: string;
+  dist_route: string;
+  dist_ligne_electrique: string;
+  dist_structure_souterraine: string;
 
-  // ── Section E — Distance des structures ────────────────────────────────────
-  dist_batiment: string;     // [E1] bâtiment (m)
-  dist_pont: string;         // [E2] pont (m)
-  dist_route: string;        // [E3] route (m)
-  dist_ligne_electrique: string; // [E4] ligne électrique (m)
-  dist_structure_souterraine: string; // [E5] structure sous-terraine (m)
+  // Explosifs
+  type_detonateurs: string;
+  nb_detonateurs: string;
+  quantite_explosifs: string;    // description: amorces, explosifs en unité/sac/caisse/kg
+  type_emulsion_pompee: string;
+  volume_roc_m3: string;
+  facteur_chargement: string;    // kg/m³
 
-  // ── Section F — Explosifs ──────────────────────────────────────────────────
-  explosifs: ExplosifRow[];
-  detonateurs: string;           // marque/modèle détonateurs
-  type_detonateurs: string;      // [F2-related] type de détonateurs
-  sequence_delais: string;
-  nb_detonateurs: string;        // [F2] nombre de détonateurs
-  type_emulsion_pompee: string;  // [F4] type d'émulsion pompée
-  volume_roc_m3: string;         // [F5] volume de roc (m³)
-  facteur_chargement: string;    // [F6] facteur de chargement (kg/m³)
+  // Recommandations
+  camera_video: boolean | null;
+  ecaillage_securite: boolean | null;
+  detecteur_co_bnq: boolean | null;
 
-  // ── Section G — Recommandations ────────────────────────────────────────────
-  camera_video: string;          // [G1] Oui | Non | ''
-  ecaillage_securite: string;    // [G2] Oui | Non | ''
-  detecteur_co_bnq: string;      // [G3] Oui | Non | ''
+  // Résultat du sautage
+  concentration_co_ppm: string;
+  fracturation_exigee: boolean | null;
+  bris_hors_profil: boolean | null;
+  trous_rates: boolean | null;   // trous ratés / canon / fond de trou
+  projection: boolean | null;
+  projection_details: string;    // si oui, distance et grosseur des pierres
+  description_dommages: string;
 
-  // ── Sécurité (opérationnelle) ──────────────────────────────────────────────
-  zone_securite_m: string;
-  signaux_utilises: string;
-  gardiens: GardienRow[];
-  procedures_suivies: boolean;
-  zone_evacuee: boolean;
-  communication_etablie: boolean;
-  inspection_avant: boolean;
-
-  // ── Section H — Résultats du sautage ──────────────────────────────────────
-  heure_mise_a_feu: string;
-  concentration_co_ppm: string;  // [H1] concentration max. de CO
-  fracturation_exigee: string;   // [H2] Oui | Non | ''
-  bris_hors_profil: string;      // [H3] Oui | Non | ''
-  trous_rates: string;           // [H4] Oui | Non | 'oui' | 'non' (compat)
-  nb_trous_rates: string;
-  projection: string;            // [H5] Oui | Non | ''
-  projection_distance_pierres: string; // [H5a] si oui, distance et grosseur
-  description_dommages: string;  // [H5b] description des dommages
-  fragmentation: string;
-  projection_max_m: string;
-  bruit_db: string;
-  fumee_couleur: string;
-  description_rates: string;
-  procedures_rates: string;
-  resultats_generaux: string;
-
-  // ── Récap ──────────────────────────────────────────────────────────────────
-  total_explosif_kg: string;
-  total_detonateurs: string;
-  ratio_poudre: string;
-
-  // ── Section I — Remarques ──────────────────────────────────────────────────
+  // Remarques
   remarques: string;
 
-  // ── Section J — Signature ──────────────────────────────────────────────────
-  signature_data: string;
-  signature_date: string;
+  // Boutefeu (pré-rempli depuis profil)
+  boutefeu_nom: string;
+  boutefeu_prenom: string;
+  boutefeu_certificat: string;
+  boutefeu_permis_sq: string;
 
-  // ── Plan du patron de forage (dessin libre) ───────────────────────────────
-  patron_forage_dataurl?: string;
+  // ── PAGE 2: Plan de tir — Registre de forage ─────────────────────────────
 
-  // ── Vision AI — Firing Sequence (Phase 2) ─────────────────────────────────
-  firingSequence?: FiringSequence;
+  // 5 items à documenter (texte libre)
+  plan_faces_libres: string;
+  plan_direction_tir: string;
+  plan_sequence_identification: string;
+  plan_structures_distance: string;
+  plan_zone_tir: string;
 
+  // Dessin libre (canvas data URL)
+  patron_forage_dataurl: string;
+
+  // ── PAGE 3: Profil de tir ─────────────────────────────────────────────────
+
+  // Info requises (texte libre)
+  profil_description_explosifs: string;
+  profil_agents_sautage: string;
+  profil_raccordements_delais: string;
+
+  // 6 schémas de sautage
+  schemas: SchemaForage[];
+
+  // ── Métadonnées ───────────────────────────────────────────────────────────
   createdAt: string;
   updatedAt: string;
 }
 
-export interface ExplosifRow {
-  id: string;
-  type: string;
-  fabricant: string;
-  lot: string;
-  quantite_par_trou: string;
-  nb_trous: string;
-  total_kg: string;
-  unite: string;
-}
-
-export interface GardienRow {
-  id: string;
-  nom: string;
-  poste: string;
-}
-
-// ─── Vision AI / Firing Sequence ──────────────────────────────────────────────
-
-export interface FiringHole {
-  id: number;
-  x: number;         // 0-1 normalized horizontal position (0=left, 1=right)
-  y: number;         // 0-1 normalized vertical position (0=top, 1=bottom)
-  delay_ms: number;  // delay in milliseconds (-1 if unknown)
-  type?: 'bouchon' | 'masse' | 'tampon';
-}
-
-export interface FiringConnection {
-  from: number;  // source hole ID
-  to: number;    // destination hole ID
-}
-
-export interface FiringSequence {
-  holes: FiringHole[];
-  connections?: FiringConnection[];
-  extractedAt?: string;  // ISO timestamp
-  confidence?: number;   // 0-1 extraction confidence
-  model?: string;        // AI model used
-  totalHolesDetected?: number;
-  delayRange?: { min: number; max: number };
-}
+// ─── DB Class ─────────────────────────────────────────────────────────────────
 
 class JournalDB extends Dexie {
   profil!: Table<ProfilBoutefeu>;
@@ -192,36 +151,32 @@ class JournalDB extends Dexie {
 
   constructor() {
     super('JournalDeTirDB');
-    this.version(1).stores({
+    // Version 6: complete simplification — matching 3-page government form
+    this.version(6).stores({
       profil: '++id',
-      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
-    });
-    // Version 2: adds firingSequence field (non-indexed — stored as JSON blob)
-    this.version(2).stores({
-      profil: '++id',
-      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
-    });
-    // Version 3: adds full ASP form fields (sections A-J)
-    this.version(3).stores({
-      profil: '++id',
-      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
-    });
-    // Version 4: adds patron_forage_dataurl (freehand drawing canvas)
-    this.version(4).stores({
-      profil: '++id',
-      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
-    });
-    // Version 5: adds gemini_api_key to profil (stored in IndexedDB, not source code)
-    this.version(5).stores({
-      profil: '++id',
-      journaux: '++id, statut, date_tir, chantier, numero_tir, createdAt'
+      journaux: '++id, statut, date_tir, localisation_chantier, numero_tir, createdAt'
     });
   }
 }
 
 export const db = new JournalDB();
 
-// Helpers
+// ─── Default empty schemas ────────────────────────────────────────────────────
+
+export function defaultSchemas(): SchemaForage[] {
+  return Array.from({ length: 6 }, () => ({
+    chargement_type: '',
+    profondeur_sol_roc: '',
+    bourre: '',
+    explosifs_amorces: '',
+    couches: '',
+    trous_de: '',
+    trous_a: '',
+  }));
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export async function getProfil(): Promise<ProfilBoutefeu | null> {
   const all = await db.profil.toArray();
   return all[0] || null;
@@ -264,4 +219,94 @@ export function genNumeroTir(): string {
   const h = String(now.getHours()).padStart(2, '0');
   const min = String(now.getMinutes()).padStart(2, '0');
   return `TIR-${y}${m}${d}-${h}${min}`;
+}
+
+export function emptyJournal(profil?: ProfilBoutefeu | null): Omit<JournalTir, 'id'> {
+  const now = new Date().toISOString();
+  return {
+    numero_tir: genNumeroTir(),
+    statut: 'brouillon',
+
+    nom_entreprise: profil?.employeur || '',
+    adresse_entreprise: '',
+    localisation_chantier: profil?.chantier_actuel || '',
+    donneur_ouvrage: '',
+
+    localisation_chainage: '',
+    date_tir: new Date().toISOString().split('T')[0],
+    heure_tir: '',
+    nb_volees_quotidiennes: '',
+
+    temperature: '',
+    meteo_ensoleille: false,
+    meteo_nuageux: false,
+    meteo_pluie: false,
+    meteo_neige: false,
+    vent_direction_vitesse: '',
+
+    nb_trous: '',
+    diametre_forage: '',
+    fardeau: '',
+    espacement: '',
+    profondeur_moy_rangee: '',
+    hauteur_collet: '',
+    nature_bourre_pierre_nette: false,
+    nature_bourre_concassee: false,
+    hauteur_mort_terrain: '',
+    vibrations_valeur_respecter: '',
+    vibrations_valeur_obtenue: '',
+    vibrations_sismographes: '',
+    nb_trous_predecoupage: '',
+    type_pare_eclats: '',
+    pare_eclats_dimension: '',
+    pare_eclats_nombre: '',
+
+    dist_batiment: '',
+    dist_pont: '',
+    dist_route: '',
+    dist_ligne_electrique: '',
+    dist_structure_souterraine: '',
+
+    type_detonateurs: '',
+    nb_detonateurs: '',
+    quantite_explosifs: '',
+    type_emulsion_pompee: '',
+    volume_roc_m3: '',
+    facteur_chargement: '',
+
+    camera_video: null,
+    ecaillage_securite: null,
+    detecteur_co_bnq: null,
+
+    concentration_co_ppm: '',
+    fracturation_exigee: null,
+    bris_hors_profil: null,
+    trous_rates: null,
+    projection: null,
+    projection_details: '',
+    description_dommages: '',
+
+    remarques: '',
+
+    boutefeu_nom: profil?.nom || '',
+    boutefeu_prenom: profil?.prenom || '',
+    boutefeu_certificat: profil?.certificat_cstc || '',
+    boutefeu_permis_sq: profil?.permis_sq || '',
+
+    plan_faces_libres: '',
+    plan_direction_tir: '',
+    plan_sequence_identification: '',
+    plan_structures_distance: '',
+    plan_zone_tir: '',
+    patron_forage_dataurl: '',
+
+    profil_description_explosifs: '',
+    profil_agents_sautage: '',
+    profil_raccordements_delais: '',
+
+    schemas: defaultSchemas(),
+
+    createdAt: now,
+    updatedAt: now,
+  };
 }

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProfil, saveProfil } from '$lib/db';
+  import { getProfil, saveProfil, type ProfilBoutefeu } from '$lib/db';
   import { showToast } from '$lib/stores/app';
 
   let saving = $state(false);
   let loading = $state(true);
-  let hasProfil = $state(false);
+  let saved = $state(false);
 
-  let form = $state({
+  let form = $state<Omit<ProfilBoutefeu, 'id'>>({
     prenom: '',
     nom: '',
     certificat_cstc: '',
@@ -16,27 +16,14 @@
     employeur: '',
     chantier_actuel: '',
     telephone: '',
-    email: '',
     updatedAt: '',
-    gemini_api_key: '',
   });
-
-  let showGeminiKey = $state(false);
 
   onMount(async () => {
     const profil = await getProfil();
     if (profil) {
-      form.prenom = profil.prenom || '';
-      form.nom = profil.nom || '';
-      form.certificat_cstc = profil.certificat_cstc || '';
-      form.cstc_expiry = profil.cstc_expiry || '';
-      form.permis_sq = profil.permis_sq || '';
-      form.employeur = profil.employeur || '';
-      form.chantier_actuel = profil.chantier_actuel || '';
-      form.telephone = profil.telephone || '';
-      form.email = profil.email || '';
-      form.gemini_api_key = profil.gemini_api_key || '';
-      hasProfil = true;
+      const { id: _, ...rest } = profil;
+      form = rest;
     }
     loading = false;
   });
@@ -49,273 +36,147 @@
         ...form,
         updatedAt: new Date().toISOString(),
       });
-      hasProfil = true;
-      showToast('✅ Profil sauvegardé!', 'success');
+      saved = true;
+      showToast('✅ Profil sauvegardé', 'success');
+      setTimeout(() => saved = false, 3000);
     } catch (err) {
+      console.error(err);
       showToast('Erreur lors de la sauvegarde', 'error');
     } finally {
       saving = false;
     }
   }
-
-  // CSTC expiry check — Svelte 5 $derived takes an expression, not a function factory
-  const cstcExpired = $derived(
-    form.cstc_expiry ? new Date(form.cstc_expiry) < new Date() : false
-  );
-
-  const cstcExpiringSoon = $derived(
-    form.cstc_expiry
-      ? (new Date(form.cstc_expiry).getTime() - Date.now() > 0 &&
-         new Date(form.cstc_expiry).getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000)
-      : false
-  );
 </script>
 
+{#if loading}
+  <div style="text-align: center; padding: 40px; color: var(--text3);">Chargement...</div>
+{:else}
 <div style="padding: 14px 12px 0;">
 
   <!-- Header -->
   <div style="
     background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 14px; margin-bottom: 12px;
+    padding: 14px; margin-bottom: 16px;
   ">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <div style="
-        width: 52px; height: 52px; background: var(--accent); border-radius: 12px;
-        display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0;
-      ">👷</div>
-      <div>
-        <div style="font-size: 18px; font-weight: 800; color: var(--text);">
-          {hasProfil ? `${form.prenom} ${form.nom}` : 'Mon profil'}
-        </div>
-        <div style="font-size: 12px; color: var(--text3);">
-          {hasProfil ? (form.employeur || 'Boutefeu certifié') : 'Configurer votre profil'}
-        </div>
-      </div>
+    <div style="font-size: 18px; font-weight: 800; color: var(--text); margin-bottom: 2px;">👷 Mon Profil</div>
+    <div style="font-size: 12px; color: var(--text3);">
+      Ces informations pré-remplissent chaque nouveau journal de tir automatiquement.
     </div>
   </div>
 
-  {#if !loading}
+  <!-- Identité du boutefeu -->
+  <div style="font-size: 11px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+    Identité du boutefeu
+  </div>
 
-    <!-- CSTC Alerts -->
-    {#if form.cstc_expiry}
-      {#if cstcExpired}
-        <div style="
-          background: var(--red-dim); border: 1px solid rgba(231,76,60,0.4);
-          border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
-          font-size: 13px; color: var(--red);
-        ">
-          ⚠️ <strong>CERTIFICAT CSTC EXPIRÉ</strong> — Votre certificat a expiré le {form.cstc_expiry}. Renouvelez-le immédiatement.
-        </div>
-      {:else if cstcExpiringSoon}
-        <div style="
-          background: var(--yellow-dim); border: 1px solid rgba(243,156,18,0.4);
-          border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;
-          font-size: 13px; color: var(--yellow);
-        ">
-          ⏰ <strong>Renouvellement bientôt requis</strong> — Votre certificat CSTC expire le {form.cstc_expiry}.
-        </div>
-      {/if}
+  <div class="form-row" style="margin-bottom: 10px;">
+    <div class="form-group">
+      <label for="prenom">Prénom</label>
+      <input id="prenom" type="text" bind:value={form.prenom} placeholder="Prénom">
+    </div>
+    <div class="form-group">
+      <label for="nom">Nom</label>
+      <input id="nom" type="text" bind:value={form.nom} placeholder="Nom de famille">
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-bottom: 10px;">
+    <div class="form-group">
+      <label for="telephone">Téléphone</label>
+      <input id="telephone" type="tel" bind:value={form.telephone} placeholder="ex: 514-555-1234">
+    </div>
+    <div class="form-group">
+      <label for="employeur">Employeur</label>
+      <input id="employeur" type="text" bind:value={form.employeur} placeholder="Nom de l'entreprise">
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Certifications -->
+  <div style="font-size: 11px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+    Certifications et permis
+  </div>
+
+  <div class="form-row" style="margin-bottom: 10px;">
+    <div class="form-group">
+      <label for="certificat_cstc">Certificat CSTC</label>
+      <input id="certificat_cstc" type="text" bind:value={form.certificat_cstc} placeholder="ex: BF-12345">
+    </div>
+    <div class="form-group">
+      <label for="cstc_expiry">Expiration CSTC</label>
+      <input id="cstc_expiry" type="date" bind:value={form.cstc_expiry}>
+    </div>
+  </div>
+
+  <div class="form-row cols1" style="margin-bottom: 16px;">
+    <div class="form-group">
+      <label for="permis_sq">Permis Sûreté du Québec</label>
+      <input id="permis_sq" type="text" bind:value={form.permis_sq} placeholder="ex: SQ-2024-XXXXX">
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Chantier actuel -->
+  <div style="font-size: 11px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+    Chantier actuel
+  </div>
+
+  <div class="form-row cols1" style="margin-bottom: 16px;">
+    <div class="form-group">
+      <label for="chantier_actuel">Localisation du chantier actuel</label>
+      <input
+        id="chantier_actuel"
+        type="text"
+        bind:value={form.chantier_actuel}
+        placeholder="ex: Autoroute 40, km 23 — Montréal"
+      >
+    </div>
+  </div>
+
+  <!-- Info note -->
+  <div style="
+    background: var(--card2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; margin-bottom: 16px;
+    font-size: 11px; color: var(--text3); line-height: 1.5;
+  ">
+    💡 <strong style="color: var(--text2);">Utilisation:</strong> Ces données sont stockées localement sur votre téléphone (IndexedDB). Aucune donnée n'est envoyée sur Internet. Les informations sont pré-remplies dans chaque nouveau journal.
+  </div>
+
+  <!-- Save button -->
+  <button
+    onclick={save}
+    disabled={saving}
+    class="btn btn-primary btn-full"
+    style="margin-bottom: 16px; {saved ? 'background: var(--green); border-color: var(--green);' : ''}"
+  >
+    {saving ? '⏳ Sauvegarde...' : saved ? '✅ Profil sauvegardé!' : '💾 Sauvegarder le profil'}
+  </button>
+
+  <!-- CSTC expiry warning -->
+  {#if form.cstc_expiry}
+    {@const expiryDate = new Date(form.cstc_expiry)}
+    {@const now = new Date()}
+    {@const daysLeft = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))}
+    {#if daysLeft < 30}
+      <div style="
+        background: var(--red-dim); border: 1px solid var(--red);
+        border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 16px;
+        font-size: 12px; color: var(--red); font-weight: 600;
+      ">
+        ⚠️ Votre certificat CSTC expire {daysLeft <= 0 ? 'depuis' : 'dans'} {Math.abs(daysLeft)} jour{Math.abs(daysLeft) !== 1 ? 's' : ''}!
+      </div>
+    {:else if daysLeft < 60}
+      <div style="
+        background: var(--yellow-dim); border: 1px solid var(--yellow);
+        border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 16px;
+        font-size: 12px; color: var(--yellow); font-weight: 600;
+      ">
+        ⚠️ Votre certificat CSTC expire dans {daysLeft} jours.
+      </div>
     {/if}
-
-    <!-- Identity -->
-    <div class="card">
-      <div class="card-header" style="cursor: default;">
-        <div class="section-letter">①</div>
-        <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Identité</h3>
-      </div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="prenom">Prénom <span style="color:var(--red)">*</span></label>
-            <input id="prenom" type="text" bind:value={form.prenom} placeholder="Votre prénom">
-          </div>
-          <div class="form-group">
-            <label for="nom">Nom <span style="color:var(--red)">*</span></label>
-            <input id="nom" type="text" bind:value={form.nom} placeholder="Votre nom">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="telephone">Téléphone</label>
-            <input id="telephone" type="tel" bind:value={form.telephone} placeholder="ex: 514-555-0123">
-          </div>
-          <div class="form-group">
-            <label for="email">Courriel</label>
-            <input id="email" type="email" bind:value={form.email} placeholder="votre@email.com">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Certifications -->
-    <div class="card">
-      <div class="card-header" style="cursor: default;">
-        <div class="section-letter">②</div>
-        <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Certifications et permis</h3>
-      </div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="certificat_cstc">Certificat CSTC <span style="color:var(--red)">*</span></label>
-            <input id="certificat_cstc" type="text" bind:value={form.certificat_cstc} placeholder="ex: BF-12345">
-          </div>
-          <div class="form-group">
-            <label for="cstc_expiry">Date d'expiration CSTC</label>
-            <input id="cstc_expiry" type="date" bind:value={form.cstc_expiry}>
-          </div>
-        </div>
-        <div class="form-row cols1">
-          <div class="form-group">
-            <label for="permis_sq">Permis Sûreté du Québec <span style="color:var(--red)">*</span></label>
-            <input id="permis_sq" type="text" bind:value={form.permis_sq} placeholder="ex: SQ-2024-XXXXX">
-          </div>
-        </div>
-
-        <!-- Validity indicator -->
-        {#if form.certificat_cstc}
-          <div style="
-            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            background: {cstcExpired ? 'var(--red-dim)' : cstcExpiringSoon ? 'var(--yellow-dim)' : 'var(--green-dim)'};
-            border-radius: var(--radius-sm); font-size: 12px;
-            color: {cstcExpired ? 'var(--red)' : cstcExpiringSoon ? 'var(--yellow)' : 'var(--green)'};
-          ">
-            {cstcExpired ? '⚠️ Certificat expiré' : cstcExpiringSoon ? '⏰ Expire bientôt' : '✅ Certificat valide'}
-            {#if form.cstc_expiry}· Expiration: {form.cstc_expiry}{/if}
-          </div>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Travail -->
-    <div class="card">
-      <div class="card-header" style="cursor: default;">
-        <div class="section-letter">③</div>
-        <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Employeur et chantier</h3>
-      </div>
-      <div class="card-body">
-        <div class="form-row cols1">
-          <div class="form-group">
-            <label for="employeur">Employeur</label>
-            <input id="employeur" type="text" bind:value={form.employeur} placeholder="ex: Fafard Explosifs Inc.">
-          </div>
-        </div>
-        <div class="form-row cols1">
-          <div class="form-group">
-            <label for="chantier_actuel">Chantier actuel</label>
-            <input id="chantier_actuel" type="text" bind:value={form.chantier_actuel} placeholder="ex: Prolongement ligne bleue métro">
-          </div>
-        </div>
-        <div style="
-          background: rgba(79,110,247,0.08); border: 1px solid rgba(79,110,247,0.2);
-          border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 8px;
-          font-size: 12px; color: var(--accent2);
-        ">
-          💡 Ces informations seront automatiquement remplies dans tous vos nouveaux journaux de tir.
-        </div>
-      </div>
-    </div>
-
-    <!-- Vision AI / Gemini API Key -->
-    <div class="card">
-      <div class="card-header" style="cursor: default;">
-        <div class="section-letter">④</div>
-        <h3 style="font-size: 14px; font-weight: 600; color: var(--text); flex: 1;">Vision AI — Gemini</h3>
-      </div>
-      <div class="card-body">
-        {#if !form.gemini_api_key}
-          <div style="
-            background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.3);
-            border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px;
-            font-size: 12px; color: #a78bfa;
-          ">
-            🤖 <strong>Clé API requise</strong> — Ajoutez votre clé Gemini pour activer l'extraction automatique des séquences de tir (Vision AI).
-          </div>
-        {/if}
-        <div class="form-row cols1">
-          <div class="form-group">
-            <label for="gemini_api_key">🔑 Clé API Gemini (pour Vision AI)</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              {#if showGeminiKey}
-                <input
-                  id="gemini_api_key"
-                  type="text"
-                  bind:value={form.gemini_api_key}
-                  placeholder="AIzaSy..."
-                  style="flex: 1; font-family: monospace; font-size: 12px;"
-                  autocomplete="off"
-                  spellcheck="false"
-                >
-              {:else}
-                <input
-                  id="gemini_api_key"
-                  type="password"
-                  bind:value={form.gemini_api_key}
-                  placeholder="AIzaSy..."
-                  style="flex: 1;"
-                  autocomplete="off"
-                >
-              {/if}
-              <button
-                type="button"
-                onclick={() => showGeminiKey = !showGeminiKey}
-                style="
-                  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 13px;
-                  background: var(--card2); border: 1px solid var(--border);
-                  color: var(--text2); cursor: pointer; font-family: inherit;
-                  flex-shrink: 0;
-                "
-                title={showGeminiKey ? 'Masquer' : 'Afficher'}
-              >
-                {showGeminiKey ? '🙈' : '👁️'}
-              </button>
-            </div>
-            <div style="font-size: 11px; color: var(--text3); margin-top: 6px;">
-              Obtenez votre clé gratuite sur <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent2);">aistudio.google.com/apikey</a>
-            </div>
-          </div>
-        </div>
-        {#if form.gemini_api_key}
-          <div style="
-            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-            background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.25);
-            border-radius: var(--radius-sm); font-size: 12px; color: var(--green);
-          ">
-            ✅ Clé API configurée — Vision AI disponible
-          </div>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Save button -->
-    <button onclick={save} class="btn btn-primary btn-full" style="margin-top: 4px;" disabled={saving}>
-      {saving ? '⏳ Sauvegarde...' : '💾 Sauvegarder le profil'}
-    </button>
-
-    <!-- About -->
-    <div style="
-      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 14px; margin-top: 12px;
-    ">
-      <div style="font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-        À propos de l'application
-      </div>
-      <div style="font-size: 12px; color: var(--text2); line-height: 1.6;">
-        <strong style="color: var(--text);">Journal de Tir v1.0 MVP</strong><br>
-        Application PWA pour boutefeux québécois<br>
-        Conforme Règlement E-22 — CSTC — CNESST<br>
-        <br>
-        <span style="color: var(--text3);">Toutes les données sont stockées localement sur votre appareil. Aucune donnée n'est envoyée à un serveur.</span>
-      </div>
-      <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
-        <span class="badge badge-blue">📱 PWA</span>
-        <span class="badge badge-blue">🔒 Hors-ligne</span>
-        <span class="badge badge-green">✅ E-22</span>
-        <span class="badge badge-gray">Québec 🇨🇦</span>
-      </div>
-    </div>
-
-  {:else}
-    <div style="text-align: center; padding: 40px; color: var(--text3);">Chargement...</div>
   {/if}
 
 </div>
+{/if}

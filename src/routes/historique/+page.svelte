@@ -9,7 +9,6 @@
   let loading = $state(true);
   let search = $state('');
   let filterStatut = $state('tous');
-  let exporting = $state<number | null>(null);
 
   onMount(async () => {
     journaux = await getJournaux();
@@ -19,49 +18,18 @@
   const filtered = $derived(journaux.filter(j => {
     const matchSearch = !search ||
       j.numero_tir?.toLowerCase().includes(search.toLowerCase()) ||
-      j.chantier?.toLowerCase().includes(search.toLowerCase()) ||
+      j.localisation_chantier?.toLowerCase().includes(search.toLowerCase()) ||
       j.date_tir?.includes(search) ||
       j.boutefeu_nom?.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === 'tous' || j.statut === filterStatut;
     return matchSearch && matchStatut;
   }));
 
-  function getStatutBadge(statut: string) {
-    switch (statut) {
-      case 'complete': return 'badge-green';
-      case 'brouillon': return 'badge-yellow';
-      case 'archive': return 'badge-gray';
-      default: return 'badge-gray';
-    }
-  }
-
-  function getStatutLabel(statut: string) {
-    switch (statut) {
-      case 'complete': return '✅ Complété';
-      case 'brouillon': return '✏️ Brouillon';
-      case 'archive': return '📦 Archivé';
-      default: return statut;
-    }
-  }
-
   async function confirmDelete(j: JournalTir) {
     if (!confirm(`Supprimer "${j.numero_tir}"? Cette action est irréversible.`)) return;
     await deleteJournal(j.id!);
     journaux = journaux.filter(x => x.id !== j.id);
     showToast('🗑️ Journal supprimé', 'info');
-  }
-
-  async function exportPDF(j: JournalTir) {
-    exporting = j.id!;
-    try {
-      const { exportJournalPDF } = await import('$lib/pdf');
-      await exportJournalPDF(j);
-      showToast('📄 PDF téléchargé!', 'success');
-    } catch (err) {
-      showToast('Erreur export PDF', 'error');
-    } finally {
-      exporting = null;
-    }
   }
 
   function formatDate(dateStr: string) {
@@ -101,7 +69,6 @@
         { val: 'tous', label: 'Tous' },
         { val: 'brouillon', label: '✏️ Brouillons' },
         { val: 'complete', label: '✅ Complétés' },
-        { val: 'archive', label: '📦 Archivés' },
       ] as f}
         <button
           onclick={() => filterStatut = f.val}
@@ -144,7 +111,7 @@
       <div style="
         background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
         margin-bottom: 10px; overflow: hidden;
-        border-left: 3px solid {j.statut === 'complete' ? 'var(--green)' : j.statut === 'brouillon' ? 'var(--yellow)' : 'var(--border)'};
+        border-left: 3px solid {j.statut === 'complete' ? 'var(--green)' : 'var(--yellow)'};
       ">
         <!-- Card header (clickable) -->
         <button
@@ -162,13 +129,20 @@
           <div style="flex: 1; min-width: 0;">
             <div style="font-size: 13px; font-weight: 700; color: var(--text);">{j.numero_tir || 'Sans numéro'}</div>
             <div style="font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              {j.chantier || 'Chantier —'} · {formatDate(j.date_tir)}
+              {j.localisation_chantier || 'Chantier —'} · {formatDate(j.date_tir)}
             </div>
             {#if j.boutefeu_nom}
               <div style="font-size: 10px; color: var(--text3);">👷 {j.boutefeu_prenom} {j.boutefeu_nom}</div>
             {/if}
           </div>
-          <span class="badge {getStatutBadge(j.statut)}">{getStatutLabel(j.statut)}</span>
+          <span style="
+            font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+            {j.statut === 'complete'
+              ? 'background: var(--green-dim); color: var(--green); border: 1px solid rgba(46,204,113,0.3);'
+              : 'background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(243,156,18,0.3);'}
+          ">
+            {j.statut === 'complete' ? '✅ Complété' : '✏️ Brouillon'}
+          </span>
         </button>
 
         <!-- Card actions -->
@@ -185,14 +159,13 @@
             "
           >👁️ Voir</button>
           <button
-            onclick={() => exportPDF(j)}
-            disabled={exporting === j.id}
+            onclick={() => goto(base + `/journal/new?edit=${j.id}`)}
             style="
-              flex: 1; padding: 7px 10px; background: var(--card2); border: 1px solid var(--border);
-              color: var(--text2); border-radius: 6px; font-size: 11px; font-weight: 600;
+              flex: 1; padding: 7px 10px; background: var(--accent-glow); border: 1px solid var(--accent);
+              color: var(--accent2); border-radius: 6px; font-size: 11px; font-weight: 600;
               cursor: pointer; font-family: inherit;
             "
-          >{exporting === j.id ? '⏳' : '📄 PDF'}</button>
+          >✏️ Modifier</button>
           <button
             onclick={() => confirmDelete(j)}
             style="
