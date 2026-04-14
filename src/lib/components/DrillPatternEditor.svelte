@@ -736,7 +736,6 @@ Normalize positions to 0-1 range based on the image boundaries.`;
           bind:this={photoInput}
           type="file"
           accept="image/*"
-          capture="environment"
           onchange={handlePhotoImport}
           style="display: none;"
         >
