@@ -136,6 +136,9 @@
   // Zone thresholds (percentage of max delay)
   const ZONE_THRESHOLDS = [0.15, 0.30, 0.55, 0.80, 1.0];
 
+  // Derived legend state — which zones are used (for HTML legend below canvas)
+  let usedZoneLegend = $state<number[]>([]);
+
   function getDelayZone(delayMs: number, maxDelay: number): number {
     if (maxDelay <= 0) return 2; // default to production zone
     const ratio = delayMs / maxDelay;
@@ -153,6 +156,22 @@
       return base;
     }
     return base;
+  }
+
+  // Compute hole radius based on count
+  function getHoleRadius(count: number, canvasW: number): number {
+    if (count > 80) return Math.max(4, Math.min(6, canvasW / 80));
+    if (count > 50) return Math.max(5, Math.min(7, canvasW / 70));
+    if (count > 20) return Math.max(7, Math.min(9, canvasW / 60));
+    return Math.max(9, Math.min(12, canvasW / 50));
+  }
+
+  // Label font size based on hole count
+  function getLabelFontSize(count: number): number {
+    if (count > 80) return 9;
+    if (count > 50) return 10;
+    if (count > 20) return 10;
+    return 11;
   }
 
   function getCanvasSize(): { w: number; h: number } {
@@ -175,29 +194,6 @@
     renderCanvas();
   }
 
-  // Convex hull for contour zone lines (Graham scan)
-  function convexHull(points: {x: number; y: number}[]): {x: number; y: number}[] {
-    if (points.length < 3) return points;
-    const sorted = [...points].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-    const cross = (o: {x:number;y:number}, a: {x:number;y:number}, b: {x:number;y:number}) =>
-      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-    const lower: {x:number;y:number}[] = [];
-    for (const p of sorted) {
-      while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
-        lower.pop();
-      lower.push(p);
-    }
-    const upper: {x:number;y:number}[] = [];
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const p = sorted[i];
-      while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
-        upper.pop();
-      upper.push(p);
-    }
-    upper.pop(); lower.pop();
-    return lower.concat(upper);
-  }
-
   function renderCanvas() {
     if (!canvasEl) return;
     const ctx = canvasEl.getContext('2d')!;
@@ -208,9 +204,12 @@
     // Compute max delay for zone calculation
     const maxDelay = holes.length > 0 ? Math.max(...holes.map(h => h.delay_ms)) : 0;
 
-    // Hole radius — smaller, cleaner
-    const HOLE_R = Math.max(7, Math.min(11, w / 50));
-    const BOUCHON_R = Math.max(5, HOLE_R - 2);
+    // Hole radius — adaptive to count
+    const HOLE_R = getHoleRadius(holes.length, w);
+    const BOUCHON_R = Math.max(4, Math.round(HOLE_R * 0.8));
+
+    // Label font size — adaptive to count
+    const fontSize = getLabelFontSize(holes.length);
 
     // Background
     ctx.fillStyle = BG_COLOR;
@@ -233,47 +232,7 @@
       ctx.strokeRect(2, 2, w - 4, h - 4);
     }
 
-    // ── Contour zone lines (convex hulls per zone) ──────────────────────────
-    if (holes.length >= 3) {
-      // Group holes by zone
-      const zoneGroups: {x: number; y: number}[][] = ZONE_COLORS.map(() => []);
-      for (const hole of holes) {
-        const zone = getDelayZone(hole.delay_ms, maxDelay);
-        zoneGroups[zone].push({ x: hole.x * w, y: hole.y * h });
-      }
-
-      // Draw convex hull per zone that has >= 3 points
-      ctx.setLineDash([6, 4]);
-      for (let zi = 0; zi < zoneGroups.length; zi++) {
-        const pts = zoneGroups[zi];
-        if (pts.length < 3) continue;
-        const hull = convexHull(pts);
-        if (hull.length < 3) continue;
-        // Expand hull slightly outward from centroid
-        const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-        const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-        const expand = HOLE_R + 6;
-        const expanded = hull.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          const d = Math.hypot(dx, dy) || 1;
-          return { x: p.x + (dx / d) * expand, y: p.y + (dy / d) * expand };
-        });
-
-        ctx.beginPath();
-        ctx.moveTo(expanded[0].x, expanded[0].y);
-        for (let i = 1; i < expanded.length; i++) {
-          ctx.lineTo(expanded[i].x, expanded[i].y);
-        }
-        ctx.closePath();
-        ctx.strokeStyle = ZONE_COLORS[zi] + '66'; // 40% opacity
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-
-    // ── Holes ───────────────────────────────────────────────────────────────
+    // ── Holes (circles only, no contour lines) ──────────────────────────────
     for (const hole of holes) {
       const px = hole.x * w;
       const py = hole.y * h;
@@ -292,11 +251,7 @@
       // Circle fill
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected
-        ? zoneColor  // same color, brighter via shadow
-        : isMoving
-          ? '#f5c518'
-          : zoneColor;
+      ctx.fillStyle = isMoving ? '#f5c518' : zoneColor;
       ctx.fill();
 
       // Border
@@ -310,50 +265,91 @@
 
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
-
-      // Delay label to the RIGHT of the hole (just the number, no "ms")
-      if (hole.delay_ms >= 0) {
-        const labelStr = String(hole.delay_ms);
-        const fontSize = labelStr.length > 3 ? 9 : 10;
-        ctx.fillStyle = '#e8e8e8';
-        ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(labelStr, px + r + 4, py);
-      }
     }
 
-    // ── Legend (bottom-right) ────────────────────────────────────────────────
-    if (holes.length > 0) {
-      // Determine which zones are actually used
-      const usedZones = new Set(holes.map(h => getDelayZone(h.delay_ms, maxDelay)));
-      const legendItems = [...usedZones].sort();
+    // ── Labels drawn AFTER all holes (always on top) ────────────────────────
+    // Keep bounding boxes for collision detection
+    const labelBoxes: { x: number; y: number; w: number; h: number }[] = [];
 
-      const legendX = w - 8;
-      const legendY = h - 10 - legendItems.length * 14;
-      const dotR = 4;
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
 
-      ctx.font = 'bold 9px system-ui, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
+    for (const hole of holes) {
+      if (hole.delay_ms < 0) continue;
 
-      for (let i = legendItems.length - 1; i >= 0; i--) {
-        const zi = legendItems[i];
-        const ly = legendY + i * 14;
-        ctx.beginPath();
-        ctx.arc(legendX - 40, ly, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = ZONE_COLORS[zi];
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(220,220,220,0.85)';
-        ctx.fillText(ZONE_LABELS[zi], legendX - 48, ly);
+      const px = hole.x * w;
+      const py = hole.y * h;
+      const zone = getDelayZone(hole.delay_ms, maxDelay);
+      const r = zone === 0 ? BOUCHON_R : HOLE_R;
+      const labelStr = String(hole.delay_ms);
+
+      const textW = ctx.measureText(labelStr).width;
+      const PAD = 2;
+      const boxW = textW + PAD * 2;
+      const boxH = fontSize + PAD * 2;
+
+      // Try positions: right, left, above, below
+      const candidates = [
+        { x: px + r + 4,           y: py },                        // right
+        { x: px - r - 4 - boxW,    y: py },                        // left
+        { x: px - boxW / 2,        y: py - r - 4 - boxH / 2 },     // above
+        { x: px - boxW / 2,        y: py + r + 4 + boxH / 2 },     // below
+      ];
+
+      let chosen: { x: number; y: number } | null = null;
+      for (const cand of candidates) {
+        const box = { x: cand.x - PAD, y: cand.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD };
+        // Check against canvas boundaries
+        if (box.x < 0 || box.x + box.w > w || box.y < 0 || box.y + box.h > h) continue;
+        // Check overlap with existing label boxes
+        const overlaps = labelBoxes.some(b =>
+          box.x < b.x + b.w && box.x + box.w > b.x &&
+          box.y < b.y + b.h && box.y + box.h > b.y
+        );
+        if (!overlaps) {
+          chosen = cand;
+          labelBoxes.push(box);
+          break;
+        }
       }
+
+      // If all positions overlap, use right without collision check (still draw it)
+      if (!chosen) {
+        chosen = candidates[0];
+        labelBoxes.push({ x: chosen.x - PAD, y: chosen.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD });
+      }
+
+      const lx = chosen.x;
+      const ly = chosen.y;
+
+      // Background pill
+      const pillX = lx - PAD;
+      const pillY = ly - boxH / 2;
+      const pillW = boxW;
+      const pillH = boxH;
+      const pillR = 2;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, pillR);
+      ctx.fill();
+
+      // Label text
+      ctx.fillStyle = '#f0f0f0';
+      ctx.textAlign = 'left';
+      ctx.fillText(labelStr, lx, ly);
     }
 
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
+
+    // Update HTML legend state
+    if (holes.length > 0) {
+      const usedSet = new Set(holes.map(h => getDelayZone(h.delay_ms, maxDelay)));
+      usedZoneLegend = [...usedSet].sort();
+    } else {
+      usedZoneLegend = [];
+    }
   }
 
   function renderToDataurl() {
@@ -379,9 +375,9 @@
     const { w, h } = getCanvasSize();
     const px = nx * w;
     const py = ny * h;
-    // Dynamic hit radius based on canvas size — bigger for mobile touch
-    const holeR = Math.max(7, Math.min(11, w / 50));
-    const HIT = holeR + 14;
+    // Use generous hit radius regardless of visual size — important for mobile touch
+    const holeR = getHoleRadius(holes.length, w);
+    const HIT = Math.max(holeR + 14, 20);
     for (let i = holes.length - 1; i >= 0; i--) {
       const hx = holes[i].x * w;
       const hy = holes[i].y * h;
@@ -1042,6 +1038,24 @@ Normalize positions to 0-1 range based on the image boundaries.`;
       {:else if !readonly}
         <span>· Touchez un trou pour le modifier</span>
       {/if}
+    </div>
+  {/if}
+
+  <!-- ── Zone legend (HTML, below canvas) ───────────────────────────────── -->
+  {#if usedZoneLegend.length > 0}
+    <div style="
+      display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 4px 4px 6px;
+      font-size: 10px; color: var(--text3);
+    ">
+      {#each usedZoneLegend as zi}
+        <span style="display: flex; align-items: center; gap: 4px;">
+          <span style="
+            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+            background: {ZONE_COLORS[zi]}; border: 1px solid rgba(0,0,0,0.3); flex-shrink: 0;
+          "></span>
+          <span>{ZONE_LABELS[zi]}</span>
+        </span>
+      {/each}
     </div>
   {/if}
 

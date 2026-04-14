@@ -131,27 +131,23 @@
     return PREVIEW_ZONE_THRESHOLDS.length - 1;
   }
 
-  function previewConvexHull(points: {x: number; y: number}[]): {x: number; y: number}[] {
-    if (points.length < 3) return points;
-    const sorted = [...points].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-    const cross = (o: {x:number;y:number}, a: {x:number;y:number}, b: {x:number;y:number}) =>
-      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-    const lower: {x:number;y:number}[] = [];
-    for (const p of sorted) {
-      while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0)
-        lower.pop();
-      lower.push(p);
-    }
-    const upper: {x:number;y:number}[] = [];
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const p = sorted[i];
-      while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0)
-        upper.pop();
-      upper.push(p);
-    }
-    upper.pop(); lower.pop();
-    return lower.concat(upper);
+  // Compute hole radius based on count (preview uses fixed 720px canvas)
+  function previewHoleRadius(count: number, canvasW: number): number {
+    if (count > 80) return Math.max(4, Math.min(6, canvasW / 80));
+    if (count > 50) return Math.max(5, Math.min(7, canvasW / 70));
+    if (count > 20) return Math.max(7, Math.min(9, canvasW / 60));
+    return Math.max(9, Math.min(12, canvasW / 50));
   }
+
+  function previewLabelFontSize(count: number): number {
+    if (count > 80) return 9;
+    if (count > 50) return 10;
+    if (count > 20) return 10;
+    return 11;
+  }
+
+  // Tracks used zones for the HTML legend below canvas
+  let previewUsedZones = $state<number[]>([]);
 
   function renderDrillPatternLight(canvasEl: HTMLCanvasElement) {
     const f = $state.snapshot(form) as typeof form;
@@ -176,44 +172,13 @@
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
 
+    const holeCount = f.drill_holes!.length;
     const maxDelay = Math.max(...f.drill_holes!.map((hh: any) => hh.delay_ms));
-    const HOLE_R = Math.max(7, Math.min(11, w / 55));
-    const BOUCHON_R = Math.max(5, HOLE_R - 2);
+    const HOLE_R = previewHoleRadius(holeCount, w);
+    const BOUCHON_R = Math.max(4, Math.round(HOLE_R * 0.8));
+    const fontSize = previewLabelFontSize(holeCount);
 
-    // ── Contour zone lines ────────────────────────────────────────────────
-    if (f.drill_holes!.length >= 3) {
-      const zoneGroups: {x: number; y: number}[][] = PREVIEW_ZONE_COLORS.map(() => []);
-      for (const hole of f.drill_holes!) {
-        const zone = getPreviewZone(hole.delay_ms, maxDelay);
-        zoneGroups[zone].push({ x: hole.x * w, y: hole.y * h });
-      }
-      ctx.setLineDash([6, 4]);
-      for (let zi = 0; zi < zoneGroups.length; zi++) {
-        const pts = zoneGroups[zi];
-        if (pts.length < 3) continue;
-        const hull = previewConvexHull(pts);
-        if (hull.length < 3) continue;
-        const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-        const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-        const expand = HOLE_R + 8;
-        const expanded = hull.map(p => {
-          const dx = p.x - cx;
-          const dy = p.y - cy;
-          const d = Math.hypot(dx, dy) || 1;
-          return { x: p.x + (dx / d) * expand, y: p.y + (dy / d) * expand };
-        });
-        ctx.beginPath();
-        ctx.moveTo(expanded[0].x, expanded[0].y);
-        for (let i = 1; i < expanded.length; i++) ctx.lineTo(expanded[i].x, expanded[i].y);
-        ctx.closePath();
-        ctx.strokeStyle = PREVIEW_ZONE_COLORS[zi] + '88'; // 53% opacity
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-
-    // ── Holes ─────────────────────────────────────────────────────────────
+    // ── Holes (circles only, no contour lines) ────────────────────────────
     for (const hole of f.drill_holes!) {
       const px = hole.x * w;
       const py = hole.y * h;
@@ -228,46 +193,82 @@
       ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       ctx.lineWidth = 1;
       ctx.stroke();
-
-      // Delay number to the right (no "ms" suffix)
-      if (hole.delay_ms >= 0) {
-        const labelStr = String(hole.delay_ms);
-        const fontSize = labelStr.length > 3 ? 8 : 9;
-        ctx.fillStyle = '#111111';
-        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(labelStr, px + r + 3, py);
-      }
     }
 
-    // ── Legend ─────────────────────────────────────────────────────────────
-    const usedZones = new Set(f.drill_holes!.map((hh: any) => getPreviewZone(hh.delay_ms, maxDelay)));
-    const legendItems = [...usedZones].sort();
-    if (legendItems.length > 0) {
-      const legendX = w - 8;
-      const legendY = h - 10 - legendItems.length * 14;
-      const dotR = 4;
-      ctx.font = 'bold 9px Arial, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i < legendItems.length; i++) {
-        const zi = legendItems[i];
-        const ly = legendY + i * 14;
-        ctx.beginPath();
-        ctx.arc(legendX - 40, ly, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = PREVIEW_ZONE_COLORS[zi];
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-        ctx.fillStyle = '#222222';
-        ctx.fillText(PREVIEW_ZONE_LABELS[zi], legendX - 48, ly);
+    // ── Labels drawn AFTER all holes (always on top) ──────────────────────
+    const labelBoxes: { x: number; y: number; w: number; h: number }[] = [];
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    for (const hole of f.drill_holes!) {
+      if (hole.delay_ms < 0) continue;
+
+      const px = hole.x * w;
+      const py = hole.y * h;
+      const zone = getPreviewZone(hole.delay_ms, maxDelay);
+      const r = zone === 0 ? BOUCHON_R : HOLE_R;
+      const labelStr = String(hole.delay_ms);
+
+      const textW = ctx.measureText(labelStr).width;
+      const PAD = 2;
+      const boxW = textW + PAD * 2;
+      const boxH = fontSize + PAD * 2;
+
+      // Try positions: right, left, above, below
+      const candidates = [
+        { x: px + r + 3,           y: py },
+        { x: px - r - 3 - boxW,    y: py },
+        { x: px - boxW / 2,        y: py - r - 3 - boxH / 2 },
+        { x: px - boxW / 2,        y: py + r + 3 + boxH / 2 },
+      ];
+
+      let chosen: { x: number; y: number } | null = null;
+      for (const cand of candidates) {
+        const box = { x: cand.x - PAD, y: cand.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD };
+        if (box.x < 0 || box.x + box.w > w || box.y < 0 || box.y + box.h > h) continue;
+        const overlaps = labelBoxes.some(b =>
+          box.x < b.x + b.w && box.x + box.w > b.x &&
+          box.y < b.y + b.h && box.y + box.h > b.y
+        );
+        if (!overlaps) {
+          chosen = cand;
+          labelBoxes.push(box);
+          break;
+        }
       }
+
+      if (!chosen) {
+        chosen = candidates[0];
+        labelBoxes.push({ x: chosen.x - PAD, y: chosen.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD });
+      }
+
+      const lx = chosen.x;
+      const ly = chosen.y;
+
+      // Background pill (slightly transparent white for light canvas)
+      const pillX = lx - PAD;
+      const pillY = ly - boxH / 2;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, boxW, boxH, 2);
+      ctx.fill();
+      // Border
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Label text
+      ctx.fillStyle = '#111111';
+      ctx.textAlign = 'left';
+      ctx.fillText(labelStr, lx, ly);
     }
 
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
+
+    // Update preview legend state
+    const usedSet = new Set(f.drill_holes!.map((hh: any) => getPreviewZone(hh.delay_ms, maxDelay)));
+    previewUsedZones = [...usedSet].sort();
   }
 
   $effect(() => {
@@ -1295,7 +1296,7 @@
       <div style="font-weight:bold;font-size:10pt;background:#ddd;padding:4px 6px;border:1px solid #999;margin-top:12px;">PATRON DE FORAGE</div>
 
       {#if form.drill_holes && form.drill_holes.length > 0}
-        <div style="border:1px solid #999;padding:8px;margin-bottom:8px;background:#fff;">
+        <div style="border:1px solid #999;padding:8px;margin-bottom:4px;background:#fff;">
           <canvas
             bind:this={previewDrillCanvasEl}
             width="720"
@@ -1303,6 +1304,16 @@
             style="width:100%;display:block;border:1px solid #eee;"
           ></canvas>
         </div>
+        {#if previewUsedZones.length > 0}
+          <div style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 4px 8px;font-size:8.5pt;color:#333;">
+            {#each previewUsedZones as zi}
+              <span style="display:flex;align-items:center;gap:4px;">
+                <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{PREVIEW_ZONE_COLORS[zi]};border:1px solid rgba(0,0,0,0.3);flex-shrink:0;"></span>
+                <span>{PREVIEW_ZONE_LABELS[zi]}</span>
+              </span>
+            {/each}
+          </div>
+        {/if}
 
       {:else if form.patron_forage_dataurl}
         <div style="border:1px solid #999;padding:8px;margin-bottom:8px;background:#fff;">
