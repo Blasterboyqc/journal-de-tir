@@ -107,21 +107,31 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // CANVAS RENDERING — Engineer plan style
+  // CANVAS RENDERING — Engineer plan style (professional, light background)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const GRID_COLOR = 'rgba(255,255,255,0.06)';
+  const GRID_COLOR = 'rgba(0,0,0,0.07)';
   const GRID_STEP = 28;
-  const BG_COLOR = '#0f1117';
-  const MOVE_BORDER = '#f5c518'; // yellow for move mode
+  const BG_COLOR = '#f8f9fa';           // Light gray — professional plan background
+  const BORDER_COLOR = '#2e7d32';       // Dark green border around blast zone (like reference)
+  const MOVE_BORDER = '#e65100';        // Orange for move mode (visible on light bg)
 
-  // Delay zone colors (engineer plan palette)
+  // Delay zone colors — vibrant, clearly readable on white/light background
   const ZONE_COLORS = [
-    '#888888', // Zone 1 (0–15%): bouchon / gray
-    '#00cccc', // Zone 2 (15–30%): inner ring / cyan
-    '#22aa22', // Zone 3 (30–55%): production / green
-    '#cccc00', // Zone 4 (55–80%): contour / yellow
-    '#cc8833', // Zone 5 (80–100%): trim/edge / brown-orange
+    '#757575', // Zone 0 (0–15%): bouchon / gray
+    '#00838f', // Zone 1 (15–30%): inner ring / teal-cyan
+    '#388e3c', // Zone 2 (30–55%): production / green
+    '#f9a825', // Zone 3 (55–80%): contour / amber-yellow
+    '#bf360c', // Zone 4 (80–100%): trim/edge / deep brown-orange
+  ];
+
+  // Zone fill colors — slightly lighter for filled hole circles
+  const ZONE_FILL_COLORS = [
+    '#9e9e9e',
+    '#00acc1',
+    '#43a047',
+    '#fdd835',
+    '#e64a19',
   ];
 
   // Zone labels for legend
@@ -149,29 +159,26 @@
   }
 
   function getZoneColor(zone: number, isSelected: boolean, isMoving: boolean): string {
-    if (isMoving) return '#f5c518';
-    const base = ZONE_COLORS[zone] ?? ZONE_COLORS[2];
-    if (isSelected) {
-      // Brighten for selection
-      return base;
-    }
-    return base;
+    if (isMoving) return MOVE_BORDER;
+    return ZONE_FILL_COLORS[zone] ?? ZONE_FILL_COLORS[2];
   }
 
   // Compute hole radius based on count
   function getHoleRadius(count: number, canvasW: number): number {
-    if (count > 80) return Math.max(4, Math.min(6, canvasW / 80));
-    if (count > 50) return Math.max(5, Math.min(7, canvasW / 70));
-    if (count > 20) return Math.max(7, Math.min(9, canvasW / 60));
-    return Math.max(9, Math.min(12, canvasW / 50));
+    if (count > 120) return Math.max(3, Math.min(5, canvasW / 100));
+    if (count > 80)  return Math.max(4, Math.min(6, canvasW / 80));
+    if (count > 50)  return Math.max(5, Math.min(7, canvasW / 70));
+    if (count > 20)  return Math.max(6, Math.min(8, canvasW / 60));
+    return Math.max(8, Math.min(11, canvasW / 50));
   }
 
   // Label font size based on hole count
   function getLabelFontSize(count: number): number {
-    if (count > 80) return 9;
-    if (count > 50) return 10;
-    if (count > 20) return 10;
-    return 11;
+    if (count > 120) return 7;
+    if (count > 80)  return 8;
+    if (count > 50)  return 9;
+    if (count > 20)  return 9;
+    return 10;
   }
 
   function getCanvasSize(): { w: number; h: number } {
@@ -194,6 +201,78 @@
     renderCanvas();
   }
 
+  // ── Convex Hull (Graham scan) ────────────────────────────────────────────
+  type Point = { x: number; y: number };
+
+  function cross(O: Point, A: Point, B: Point): number {
+    return (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+  }
+
+  function convexHull(points: Point[]): Point[] {
+    const n = points.length;
+    if (n < 3) return [...points];
+    const sorted = [...points].sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
+    const lower: Point[] = [];
+    for (const p of sorted) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+        lower.pop();
+      lower.push(p);
+    }
+    const upper: Point[] = [];
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const p = sorted[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+        upper.pop();
+      upper.push(p);
+    }
+    upper.pop();
+    lower.pop();
+    return [...lower, ...upper];
+  }
+
+  // Expand a convex hull outward by `margin` pixels
+  function expandHull(hull: Point[], margin: number): Point[] {
+    if (hull.length === 0) return hull;
+    // Compute centroid
+    const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
+    const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
+    return hull.map(p => {
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      return { x: p.x + (dx / len) * margin, y: p.y + (dy / len) * margin };
+    });
+  }
+
+  // Draw a smooth closed path through hull points using cubic bezier curves
+  function drawSmoothHull(ctx: CanvasRenderingContext2D, hull: Point[]) {
+    if (hull.length < 2) return;
+    if (hull.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(hull[0].x, hull[0].y);
+      ctx.lineTo(hull[1].x, hull[1].y);
+      ctx.closePath();
+      return;
+    }
+    const n = hull.length;
+    ctx.beginPath();
+    // Catmull-Rom → cubic bezier conversion for smooth closed curve
+    for (let i = 0; i < n; i++) {
+      const p0 = hull[(i - 1 + n) % n];
+      const p1 = hull[i];
+      const p2 = hull[(i + 1) % n];
+      const p3 = hull[(i + 2) % n];
+      if (i === 0) ctx.moveTo(p1.x, p1.y);
+      // Catmull-Rom tension 0.5
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+    ctx.closePath();
+  }
+
   function renderCanvas() {
     if (!canvasEl) return;
     const ctx = canvasEl.getContext('2d')!;
@@ -206,16 +285,16 @@
 
     // Hole radius — adaptive to count
     const HOLE_R = getHoleRadius(holes.length, w);
-    const BOUCHON_R = Math.max(4, Math.round(HOLE_R * 0.8));
+    const BOUCHON_R = Math.max(3, Math.round(HOLE_R * 0.75));
 
     // Label font size — adaptive to count
     const fontSize = getLabelFontSize(holes.length);
 
-    // Background
+    // ── Background ──────────────────────────────────────────────────────────
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, w, h);
 
-    // Grid lines
+    // ── Subtle grid ─────────────────────────────────────────────────────────
     ctx.strokeStyle = GRID_COLOR;
     ctx.lineWidth = 0.5;
     for (let x = 0; x <= w; x += GRID_STEP) {
@@ -225,42 +304,101 @@
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
 
+    // ── Contour lines (convex hull per zone) — drawn BEFORE holes ───────────
+    if (holes.length >= 2) {
+      // Group holes by zone
+      const zonePoints: Map<number, Point[]> = new Map();
+      for (const hole of holes) {
+        const zone = getDelayZone(hole.delay_ms, maxDelay);
+        if (!zonePoints.has(zone)) zonePoints.set(zone, []);
+        zonePoints.get(zone)!.push({ x: hole.x * w, y: hole.y * h });
+      }
+
+      // Draw contour for each zone (outermost first so inner zones render on top)
+      const sortedZones = [...zonePoints.keys()].sort((a, b) => b - a);
+      for (const zone of sortedZones) {
+        const pts = zonePoints.get(zone)!;
+        if (pts.length < 2) continue;
+
+        const zoneColor = ZONE_COLORS[zone] ?? ZONE_COLORS[2];
+        const hull = convexHull(pts);
+
+        // Expand hull outward by HOLE_R + 4 so contour line frames the holes
+        const margin = HOLE_R + 5;
+        const expanded = expandHull(hull, margin);
+
+        // Filled region — very light tint of the zone color
+        ctx.save();
+        drawSmoothHull(ctx, expanded);
+        ctx.fillStyle = zoneColor + '18'; // ~10% opacity fill tint
+        ctx.fill();
+        ctx.restore();
+
+        // Contour stroke line
+        ctx.save();
+        drawSmoothHull(ctx, expanded);
+        ctx.strokeStyle = zoneColor;
+        ctx.lineWidth = holes.length > 80 ? 1.2 : 1.8;
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // ── Pattern border rectangle (drawn around all holes) ───────────────────
+    if (holes.length >= 2) {
+      const MARGIN = HOLE_R + 14;
+      const bMinX = Math.min(...holes.map(hole => hole.x * w)) - MARGIN;
+      const bMaxX = Math.max(...holes.map(hole => hole.x * w)) + MARGIN;
+      const bMinY = Math.min(...holes.map(hole => hole.y * h)) - MARGIN;
+      const bMaxY = Math.max(...holes.map(hole => hole.y * h)) + MARGIN;
+
+      ctx.strokeStyle = BORDER_COLOR;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(
+        Math.max(4, bMinX),
+        Math.max(4, bMinY),
+        Math.min(w - 8, bMaxX) - Math.max(4, bMinX),
+        Math.min(h - 8, bMaxY) - Math.max(4, bMinY)
+      );
+      ctx.setLineDash([]);
+    }
+
     // Move mode overlay border
     if (moveMode) {
       ctx.strokeStyle = MOVE_BORDER;
       ctx.lineWidth = 3;
+      ctx.setLineDash([]);
       ctx.strokeRect(2, 2, w - 4, h - 4);
     }
 
-    // ── Holes (circles only, no contour lines) ──────────────────────────────
+    // ── Holes (solid filled circles with border) ─────────────────────────────
     for (const hole of holes) {
       const px = hole.x * w;
       const py = hole.y * h;
       const isSelected = hole.id === selectedHoleId || hole.id === movingHoleId;
       const isMoving = moveMode && hole.id === movingHoleId;
       const zone = getDelayZone(hole.delay_ms, maxDelay);
-      const zoneColor = getZoneColor(zone, isSelected, isMoving);
+      const fillColor = getZoneColor(zone, isSelected, isMoving);
+      const strokeColor = isMoving ? MOVE_BORDER : ZONE_COLORS[zone] ?? ZONE_COLORS[2];
       const r = zone === 0 ? BOUCHON_R : HOLE_R;
 
-      // Glow for selected
+      // Glow/highlight for selected hole
       if (isSelected) {
-        ctx.shadowColor = isMoving ? MOVE_BORDER : zoneColor;
-        ctx.shadowBlur = 14;
+        ctx.shadowColor = isMoving ? MOVE_BORDER : (ZONE_COLORS[zone] ?? ZONE_COLORS[2]);
+        ctx.shadowBlur = 10;
       }
 
       // Circle fill
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = isMoving ? '#f5c518' : zoneColor;
+      ctx.fillStyle = isMoving ? '#ff5722' : fillColor;
       ctx.fill();
 
-      // Border
-      ctx.strokeStyle = isMoving
-        ? MOVE_BORDER
-        : isSelected
-          ? '#ffffff'
-          : 'rgba(0,0,0,0.55)';
-      ctx.lineWidth = isSelected ? 2.5 : 1.2;
+      // Circle border — darker shade for definition on light background
+      ctx.strokeStyle = isSelected ? '#1a1a1a' : strokeColor;
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
       ctx.stroke();
 
       ctx.shadowBlur = 0;
@@ -268,7 +406,6 @@
     }
 
     // ── Labels drawn AFTER all holes (always on top) ────────────────────────
-    // Keep bounding boxes for collision detection
     const labelBoxes: { x: number; y: number; w: number; h: number }[] = [];
 
     ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
@@ -287,21 +424,20 @@
       const PAD = 2;
       const boxW = textW + PAD * 2;
       const boxH = fontSize + PAD * 2;
+      const gap = 3;
 
       // Try positions: right, left, above, below
       const candidates = [
-        { x: px + r + 4,           y: py },                        // right
-        { x: px - r - 4 - boxW,    y: py },                        // left
-        { x: px - boxW / 2,        y: py - r - 4 - boxH / 2 },     // above
-        { x: px - boxW / 2,        y: py + r + 4 + boxH / 2 },     // below
+        { x: px + r + gap,             y: py },
+        { x: px - r - gap - boxW,      y: py },
+        { x: px - boxW / 2,            y: py - r - gap - boxH / 2 },
+        { x: px - boxW / 2,            y: py + r + gap + boxH / 2 },
       ];
 
       let chosen: { x: number; y: number } | null = null;
       for (const cand of candidates) {
         const box = { x: cand.x - PAD, y: cand.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD };
-        // Check against canvas boundaries
-        if (box.x < 0 || box.x + box.w > w || box.y < 0 || box.y + box.h > h) continue;
-        // Check overlap with existing label boxes
+        if (box.x < 2 || box.x + box.w > w - 2 || box.y < 2 || box.y + box.h > h - 2) continue;
         const overlaps = labelBoxes.some(b =>
           box.x < b.x + b.w && box.x + box.w > b.x &&
           box.y < b.y + b.h && box.y + box.h > b.y
@@ -313,7 +449,6 @@
         }
       }
 
-      // If all positions overlap, use right without collision check (still draw it)
       if (!chosen) {
         chosen = candidates[0];
         labelBoxes.push({ x: chosen.x - PAD, y: chosen.y - boxH / 2 - PAD, w: boxW + PAD, h: boxH + PAD });
@@ -322,20 +457,9 @@
       const lx = chosen.x;
       const ly = chosen.y;
 
-      // Background pill
-      const pillX = lx - PAD;
-      const pillY = ly - boxH / 2;
-      const pillW = boxW;
-      const pillH = boxH;
-      const pillR = 2;
-
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, pillR);
-      ctx.fill();
-
-      // Label text
-      ctx.fillStyle = '#f0f0f0';
+      // No background pill on light background — just dark text directly
+      const zoneTextColor = ZONE_COLORS[zone] ?? ZONE_COLORS[2];
+      ctx.fillStyle = zoneTextColor;
       ctx.textAlign = 'left';
       ctx.fillText(labelStr, lx, ly);
     }
@@ -1051,7 +1175,7 @@ Normalize positions to 0-1 range based on the image boundaries.`;
         <span style="display: flex; align-items: center; gap: 4px;">
           <span style="
             display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-            background: {ZONE_COLORS[zi]}; border: 1px solid rgba(0,0,0,0.3); flex-shrink: 0;
+            background: {ZONE_FILL_COLORS[zi]}; border: 1.5px solid {ZONE_COLORS[zi]}; flex-shrink: 0;
           "></span>
           <span>{ZONE_LABELS[zi]}</span>
         </span>
